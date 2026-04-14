@@ -1,4 +1,5 @@
 node_modules/
+livraison/
 release/
 release-portable/
 release-portable-nosign/
