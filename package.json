@@ -1,0 +1,102 @@
+{
+  "name": "scada-water-pumping-station-workspace",
+  "version": "1.0.0",
+  "description": "Desktop SCADA application for monitoring and controlling a water pumping station.",
+  "author": "SCADA Water Station Team",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev": "node scripts/dev.js",
+    "dev:backend": "npm --prefix backend run start",
+    "dev:frontend": "npm --prefix frontend run start",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "check-env": "node scripts/check-env.js",
+    "electron:start": "node scripts/electron-dev.js",
+    "build:electron": "npm run build && npm run check-env && npx electron-builder --win nsis portable zip"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "electronVersion": "37.2.0",
+    "appId": "com.scada.waterstation",
+    "productName": "SCADA Water Station",
+    "directories": {
+      "buildResources": "electron/buildResources",
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "backend/data",
+        "to": "backend/data",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "electron/config",
+        "to": "electron/config"
+      },
+      {
+        "from": "electron/bin",
+        "to": "electron/bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "backend/node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/buildResources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SCADA Water Station",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "SCADA Water Station"
+    }
+  }
+}

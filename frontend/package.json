@@ -1,0 +1,37 @@
+{
+  "name": "scada-water-pumping-station-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for SCADA system managing water pumping stations.",
+  "main": "src/index.tsx",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.11.2",
+    "axios": "^0.21.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^7.2.6",
+    "react-router-dom": "^6.30.3",
+    "redux": "^4.1.0",
+    "vite": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "jest": "^27.0.6",
+    "ts-jest": "^27.0.6",
+    "typescript": "^4.4.3"
+  },
+  "keywords": [
+    "SCADA",
+    "water",
+    "pumping",
+    "station",
+    "frontend"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
