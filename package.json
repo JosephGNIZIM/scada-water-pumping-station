@@ -34,7 +34,7 @@
     "extraResources": [
       {
         "from": "frontend/dist",
-        "to": "frontend/dist"
+        "to": "frontend"
       },
       {
         "from": "backend/dist",
