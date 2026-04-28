@@ -13,7 +13,7 @@
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "check-env": "node scripts/check-env.js",
     "electron:start": "node scripts/electron-dev.js",
-    "build:electron": "npm run build && npm run check-env && npx electron-builder --win nsis portable zip"
+    "build:electron": "npm run build && npm run check-env && npx electron-builder --win portable dir"
   },
   "devDependencies": {
     "electron": "^37.2.0",
