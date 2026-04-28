@@ -98,5 +98,8 @@
       "deleteAppDataOnUninstall": false,
       "uninstallDisplayName": "SCADA Water Station"
     }
+  },
+  "dependencies": {
+    "kill-port": "^2.0.1"
   }
 }

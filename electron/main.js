@@ -3,12 +3,14 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
+const killPort = require('kill-port');
 const { startLocalServer } = require('./local-server');
 
 const APP_NAME = 'SCADA Water Station';
 const APP_VERSION = '1.0.0';
 const BACKEND_PORT = 3000;
-const FRONTEND_PORT = 3001;
+const DEFAULT_FRONTEND_PORT = 3001;
+const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
 const MQTT_PORT = 1883;
 const isDevMode = process.env.ELECTRON_DEV === '1';
 
@@ -18,6 +20,8 @@ let frontendServer = null;
 let mqttProcess = null;
 let backendController = null;
 let mosquittoWarning = null;
+let activeFrontendPort = Number.parseInt(process.env.FRONTEND_PORT || `${DEFAULT_FRONTEND_PORT}`, 10);
+let shutdownPromise = null;
 
 const createLogger = () => {
   const logDirectory = path.join(app.getPath('userData'), 'logs');
@@ -43,6 +47,7 @@ const createLogger = () => {
 };
 
 const logger = createLogger();
+const instanceStatePath = path.join(app.getPath('userData'), 'instance.json');
 
 const getResourcePath = (...segments) => {
   const base = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
@@ -50,6 +55,9 @@ const getResourcePath = (...segments) => {
 };
 
 const iconPath = getResourcePath('electron', 'buildResources', 'icon.png');
+const getFrontendOrigin = () => `http://127.0.0.1:${activeFrontendPort}`;
+
+const wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
 
 const updateSplashProgress = (progress, label) => {
   if (!splashWindow || splashWindow.isDestroyed()) {
@@ -69,6 +77,40 @@ const isPortOccupied = (port) =>
       .listen(port, '127.0.0.1');
   });
 
+const waitForPortState = async (port, occupied, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if ((await isPortOccupied(port)) === occupied) {
+      return true;
+    }
+    await wait(200);
+  }
+
+  return (await isPortOccupied(port)) === occupied;
+};
+
+const releasePortWithKillPort = async (port, context) => {
+  if (!(await isPortOccupied(port))) {
+    return false;
+  }
+
+  logger.warn(`Port ${port} occupied (${context}). Attempting cleanup with kill-port.`);
+
+  try {
+    await killPort(port, 'tcp');
+    const released = await waitForPortState(port, false, 5000);
+    if (!released) {
+      throw new Error(`Port ${port} is still occupied after kill-port cleanup.`);
+    }
+    logger.info(`Port ${port} released successfully.`);
+    return true;
+  } catch (error) {
+    logger.warn(`Unable to release port ${port}: ${error.message}`);
+    return false;
+  }
+};
+
 const ensurePortAvailable = async (port, name) => {
   const occupied = await isPortOccupied(port);
   if (!occupied) {
@@ -83,6 +125,133 @@ const ensurePortAvailable = async (port, name) => {
     message,
   });
   throw new Error(message);
+};
+
+const readInstanceState = () => {
+  try {
+    if (!fs.existsSync(instanceStatePath)) {
+      return null;
+    }
+
+    return JSON.parse(fs.readFileSync(instanceStatePath, 'utf8'));
+  } catch (error) {
+    logger.warn(`Unable to read instance state: ${error.message}`);
+    return null;
+  }
+};
+
+const writeInstanceState = () => {
+  try {
+    fs.mkdirSync(path.dirname(instanceStatePath), { recursive: true });
+    fs.writeFileSync(
+      instanceStatePath,
+      JSON.stringify(
+        {
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+          frontendPort: activeFrontendPort,
+          version: APP_VERSION,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    logger.warn(`Unable to write instance state: ${error.message}`);
+  }
+};
+
+const clearInstanceState = () => {
+  try {
+    if (fs.existsSync(instanceStatePath)) {
+      fs.unlinkSync(instanceStatePath);
+    }
+  } catch (error) {
+    logger.warn(`Unable to clear instance state: ${error.message}`);
+  }
+};
+
+const isProcessAlive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitForProcessExit = async (pid, timeoutMs = 8000) => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      return true;
+    }
+    await wait(250);
+  }
+
+  return !isProcessAlive(pid);
+};
+
+const terminatePreviousAppInstance = async () => {
+  const previousInstance = readInstanceState();
+  if (!previousInstance || previousInstance.pid === process.pid) {
+    return;
+  }
+
+  const previousPid = Number(previousInstance.pid);
+  if (!isProcessAlive(previousPid)) {
+    clearInstanceState();
+    return;
+  }
+
+  logger.warn(`Closing previous ${APP_NAME} instance (PID ${previousPid}) before startup.`);
+
+  try {
+    process.kill(previousPid);
+  } catch (error) {
+    logger.warn(`Unable to terminate previous instance ${previousPid}: ${error.message}`);
+  }
+
+  await waitForProcessExit(previousPid, 8000);
+  clearInstanceState();
+};
+
+const selectFrontendPort = async () => {
+  if (isDevMode) {
+    activeFrontendPort = Number.parseInt(process.env.FRONTEND_PORT || `${DEFAULT_FRONTEND_PORT}`, 10);
+    process.env.FRONTEND_PORT = `${activeFrontendPort}`;
+    return activeFrontendPort;
+  }
+
+  await releasePortWithKillPort(DEFAULT_FRONTEND_PORT, 'default frontend port');
+
+  for (const candidatePort of FRONTEND_PORT_CANDIDATES) {
+    if (!(await isPortOccupied(candidatePort))) {
+      activeFrontendPort = candidatePort;
+      process.env.FRONTEND_PORT = `${candidatePort}`;
+      logger.info(`Selected frontend port ${candidatePort}.`);
+      return candidatePort;
+    }
+
+    logger.warn(`Frontend port ${candidatePort} remains occupied. Trying next candidate.`);
+  }
+
+  throw new Error(`Aucun port frontend libre n a ete trouve parmi ${FRONTEND_PORT_CANDIDATES.join(', ')}.`);
+};
+
+const releaseFrontendPorts = async () => {
+  if (isDevMode) {
+    return;
+  }
+
+  if (activeFrontendPort) {
+    await releasePortWithKillPort(activeFrontendPort, 'frontend shutdown cleanup');
+  }
 };
 
 const resolveMosquittoPath = () => {
@@ -173,7 +342,7 @@ const createMainWindow = async () => {
     },
   });
 
-  await mainWindow.loadURL(`http://127.0.0.1:${FRONTEND_PORT}`);
+  await mainWindow.loadURL(getFrontendOrigin());
   mainWindow.once('ready-to-show', () => {
     splashWindow?.close();
     mainWindow?.show();
@@ -187,11 +356,11 @@ const createMenu = () => {
       submenu: [
         {
           label: 'Parametres',
-          click: () => mainWindow?.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/settings`),
+          click: () => mainWindow?.loadURL(`${getFrontendOrigin()}/settings`),
         },
         {
           label: 'Exporter donnees',
-          click: () => mainWindow?.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/history`),
+          click: () => mainWindow?.loadURL(`${getFrontendOrigin()}/history`),
         },
         { type: 'separator' },
         {
@@ -216,15 +385,15 @@ const createMenu = () => {
       submenu: [
         {
           label: 'Tutoriel',
-          click: () => mainWindow?.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/tutorial`),
+          click: () => mainWindow?.loadURL(`${getFrontendOrigin()}/tutorial`),
         },
         {
           label: 'A propos',
-          click: () => mainWindow?.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/about`),
+          click: () => mainWindow?.loadURL(`${getFrontendOrigin()}/about`),
         },
         {
           label: 'Diagnostic',
-          click: () => mainWindow?.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/diagnostics`),
+          click: () => mainWindow?.loadURL(`${getFrontendOrigin()}/diagnostics`),
         },
         {
           label: 'Verifier mises a jour',
@@ -244,6 +413,8 @@ const createMenu = () => {
 };
 
 const shutdown = async () => {
+  clearInstanceState();
+
   try {
     if (frontendServer?.close) {
       await frontendServer.close();
@@ -267,6 +438,14 @@ const shutdown = async () => {
   } catch (error) {
     logger.warn(`Unable to stop Mosquitto: ${error.message}`);
   }
+
+  try {
+    await waitForPortState(activeFrontendPort, false, 3000);
+  } catch (error) {
+    logger.warn(`Unable to confirm frontend port release: ${error.message}`);
+  }
+
+  await releaseFrontendPorts();
 };
 
 const bootstrap = async () => {
@@ -274,9 +453,8 @@ const bootstrap = async () => {
   updateSplashProgress(12, 'Verification des ports');
 
   await ensurePortAvailable(BACKEND_PORT, 'le backend');
-  if (!isDevMode) {
-    await ensurePortAvailable(FRONTEND_PORT, 'le frontend Electron');
-  }
+  await selectFrontendPort();
+  writeInstanceState();
 
   updateSplashProgress(32, 'Demarrage du backend');
   backendController = loadBackendModule();
@@ -296,7 +474,7 @@ const bootstrap = async () => {
       : path.join(__dirname, '..', 'frontend', 'dist');
     frontendServer = await startLocalServer({
       rootDir: frontendRoot,
-      port: FRONTEND_PORT,
+      port: activeFrontendPort,
       backendPort: BACKEND_PORT,
       logger,
     });
@@ -317,21 +495,59 @@ const bootstrap = async () => {
   }
 };
 
-app.whenReady().then(() => {
-  bootstrap().catch(async (error) => {
-    logger.error(error.stack || error.message);
-    await dialog.showMessageBox({
-      type: 'error',
-      title: APP_NAME,
-      message: 'Le demarrage de l application a echoue.',
-      detail: `${error.message}\n\nLogs: ${logger.logFile}`,
-    });
+const startApplication = async () => {
+  await terminatePreviousAppInstance();
+
+  const gotSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!gotSingleInstanceLock) {
     app.quit();
+    return;
+  }
+
+  app.on('second-instance', () => {
+    if (mainWindow?.isMinimized()) {
+      mainWindow.restore();
+    }
+
+    if (mainWindow) {
+      mainWindow.focus();
+    }
   });
+
+  app.whenReady().then(() => {
+    bootstrap().catch(async (error) => {
+      logger.error(error.stack || error.message);
+      await dialog.showMessageBox({
+        type: 'error',
+        title: APP_NAME,
+        message: 'Le demarrage de l application a echoue.',
+        detail: `${error.message}\n\nLogs: ${logger.logFile}`,
+      });
+      app.quit();
+    });
+  });
+};
+
+startApplication().catch((error) => {
+  logger.error(error.stack || error.message);
+  app.quit();
 });
 
-app.on('before-quit', () => {
-  shutdown().catch(() => {});
+app.on('before-quit', (event) => {
+  if (shutdownPromise) {
+    event.preventDefault();
+    return;
+  }
+
+  event.preventDefault();
+  shutdownPromise = shutdown()
+    .catch((error) => {
+      logger.warn(`Shutdown cleanup failed: ${error.message}`);
+    })
+    .finally(() => {
+      app.releaseSingleInstanceLock();
+      app.exit();
+    });
 });
 
 app.on('window-all-closed', () => {
