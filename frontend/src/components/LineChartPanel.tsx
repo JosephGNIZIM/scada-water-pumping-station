@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../i18n';
 
 interface Series {
     label: string;
@@ -7,6 +8,7 @@ interface Series {
 }
 
 const LineChartPanel: React.FC<{ series: Series[]; title: string }> = ({ series, title }) => {
+    const { tr } = useI18n();
     const width = 720;
     const height = 240;
     const allValues = series.flatMap((item) => item.values);
@@ -15,11 +17,11 @@ const LineChartPanel: React.FC<{ series: Series[]; title: string }> = ({ series,
             <section className="panel chart-panel">
                 <div className="panel-heading">
                     <div>
-                        <p className="eyebrow">Trend</p>
+                        <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
                         <h2>{title}</h2>
                     </div>
                 </div>
-                <p className="muted">No data available yet.</p>
+                <p className="muted">{tr('Aucune donnee disponible pour le moment.', 'No data available yet.')}</p>
             </section>
         );
     }
@@ -40,7 +42,7 @@ const LineChartPanel: React.FC<{ series: Series[]; title: string }> = ({ series,
         <section className="panel chart-panel">
             <div className="panel-heading">
                 <div>
-                    <p className="eyebrow">Trend</p>
+                    <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
                     <h2>{title}</h2>
                 </div>
             </div>

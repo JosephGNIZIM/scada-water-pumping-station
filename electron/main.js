@@ -9,7 +9,7 @@ const { startLocalServer } = require('./local-server');
 
 const APP_NAME = 'SCADA Water Station';
 const APP_VERSION = '1.0.0';
-const BACKEND_PORT = 3000;
+const BACKEND_PORT = Number.parseInt(process.env.BACKEND_PORT || '3000', 10);
 const DEFAULT_FRONTEND_PORT = 3001;
 const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
 const MQTT_PORT = 1883;
@@ -67,6 +67,43 @@ const instanceStatePath = path.join(app.getPath('userData'), 'instance.json');
 const getResourcePath = (...segments) => {
   const base = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
   return path.join(base, ...segments);
+};
+
+const configureRuntimeEnvironment = () => {
+  const userDataPath = app.getPath('userData');
+  const runtimeDataDirectory = path.join(userDataPath, 'data');
+  const runtimeDatabasePath = path.join(runtimeDataDirectory, 'scada.sqlite');
+  const packagedDatabasePath = getResourcePath('backend', 'data', 'scada.sqlite');
+
+  fs.mkdirSync(runtimeDataDirectory, { recursive: true });
+
+  if (!fs.existsSync(runtimeDatabasePath) && fs.existsSync(packagedDatabasePath)) {
+    fs.copyFileSync(packagedDatabasePath, runtimeDatabasePath);
+    logger.info(`Seed database copied to ${runtimeDatabasePath}`);
+  }
+
+  process.env.APP_USER_DATA_PATH = userDataPath;
+  process.env.DB_STORAGE = runtimeDatabasePath;
+};
+
+const resolveFrontendRoot = () => {
+  if (!app.isPackaged) {
+    return path.join(__dirname, '..', 'frontend', 'dist');
+  }
+
+  const candidates = [
+    getResourcePath('frontend', 'dist'),
+    getResourcePath('frontend'),
+  ];
+
+  const frontendRoot = candidates.find((candidate) => fs.existsSync(path.join(candidate, 'index.html')));
+  if (!frontendRoot) {
+    throw new Error(
+      `Frontend package introuvable. Index attendu dans: ${candidates.join(', ')}`,
+    );
+  }
+
+  return frontendRoot;
 };
 
 const iconPath = getResourcePath('electron', 'buildResources', 'icon.png');
@@ -326,9 +363,9 @@ const releaseFrontendPorts = async () => {
 };
 
 const startLocalFrontendServer = async () => {
-  const frontendRoot = app.isPackaged
-    ? getResourcePath('frontend', 'dist')
-    : path.join(__dirname, '..', 'frontend', 'dist');
+  const frontendRoot = resolveFrontendRoot();
+
+  logger.info(`Serving frontend from ${frontendRoot}`);
 
   frontendServer = await startLocalServer({
     rootDir: frontendRoot,
@@ -437,6 +474,12 @@ const loadBackendModule = () => {
   const backendEntry = app.isPackaged
     ? getResourcePath('backend', 'dist', 'app.js')
     : path.join(__dirname, '..', 'backend', 'dist', 'app.js');
+
+  if (!fs.existsSync(backendEntry)) {
+    throw new Error(`Backend build introuvable: ${backendEntry}`);
+  }
+
+  logger.info(`Loading backend module from ${backendEntry}`);
 
   // eslint-disable-next-line global-require, import/no-dynamic-require
   return require(backendEntry);
@@ -598,6 +641,7 @@ const shutdown = async () => {
 };
 
 const bootstrap = async () => {
+  configureRuntimeEnvironment();
   createSplashWindow();
   updateSplashProgress(12, 'Verification des ports');
 
@@ -605,6 +649,7 @@ const bootstrap = async () => {
   writeInstanceState();
 
   updateSplashProgress(32, 'Demarrage du backend');
+  logger.info(`Database storage path: ${process.env.DB_STORAGE}`);
   await startBackend();
 
   updateSplashProgress(54, 'Demarrage du broker MQTT');

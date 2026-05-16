@@ -6,6 +6,7 @@ const isWin = process.platform === 'win32';
 const command = isWin ? 'cmd' : 'npm';
 const electronCommand = isWin ? 'cmd' : 'npx';
 const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
+const BACKEND_PORT_CANDIDATES = [3000, 3004, 3005, 3006];
 
 const children = [];
 const baseEnv = { ...process.env };
@@ -71,6 +72,16 @@ const releasePort = async (port, name) => {
   }
 };
 
+const selectBackendPort = async () => {
+  for (const port of BACKEND_PORT_CANDIDATES) {
+    if (!(await isPortOccupied(port))) {
+      return port;
+    }
+  }
+
+  throw new Error(`No backend port available in ${BACKEND_PORT_CANDIDATES.join(', ')}`);
+};
+
 const selectFrontendPort = async () => {
   await releasePort(3001, 'frontend');
 
@@ -96,15 +107,27 @@ process.on('SIGTERM', shutdown);
 
 (async () => {
   const frontendPort = await selectFrontendPort();
-  await releasePort(3000, 'backend');
+  const backendPort = await selectBackendPort();
 
-  spawnProcess('backend', ['npm', '--prefix', 'backend', 'run', 'start']);
-  spawnProcess('frontend', ['npm', '--prefix', 'frontend', 'run', 'start'], {
-    ELECTRON_DEV: '1',
-    FRONTEND_PORT: `${frontendPort}`,
+  await releasePort(backendPort, 'backend');
+
+  spawnProcess('backend', ['npm', '--prefix', 'backend', 'run', 'start'], {
+    PORT: `${backendPort}`,
+    BACKEND_PORT: `${backendPort}`,
   });
 
-  await waitForPort(3000);
+  spawnProcess(
+    'frontend',
+    ['npm', '--prefix', 'frontend', 'run', 'start', '--', '--port', `${frontendPort}`],
+    {
+      ELECTRON_DEV: '1',
+      FRONTEND_PORT: `${frontendPort}`,
+      BACKEND_PORT: `${backendPort}`,
+      VITE_PORT: `${frontendPort}`,
+    },
+  );
+
+  await waitForPort(backendPort);
   await waitForPort(frontendPort);
 
   const electron = spawn(
@@ -112,7 +135,7 @@ process.on('SIGTERM', shutdown);
     isWin ? ['/c', 'npx', 'electron', '.'] : ['electron', '.'],
     {
       stdio: 'inherit',
-      env: { ...baseEnv, ELECTRON_DEV: '1', FRONTEND_PORT: `${frontendPort}` },
+      env: { ...baseEnv, ELECTRON_DEV: '1', FRONTEND_PORT: `${frontendPort}`, BACKEND_PORT: `${backendPort}` },
       windowsHide: false,
     },
   );

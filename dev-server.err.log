@@ -1,0 +1,33 @@
+[33m[frontend][0m (node:9404) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[33m[frontend][0m Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+[33m[frontend][0m [2m10:56:17[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/User/Desktop/scada-water-pumping-station/frontend/src/components/Synoptique3D/scene/SceneAEP.js[39m:160:7
+[33m  158|              }
+  159|          });
+  160|      }
+     |        ^
+  161|  }
+  162|  [39m
+      at formatError (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+[33m[frontend][0m [2m10:57:12[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/User/Desktop/scada-water-pumping-station/frontend/src/components/Synoptique3D/scene/SceneAEP.js[39m:160:7
+[33m  158|              }
+  159|          });
+  160|      }
+     |        ^
+  161|  }
+  162|  [39m
+      at formatError (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///C:/Users/User/Desktop/scada-water-pumping-station/frontend/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)

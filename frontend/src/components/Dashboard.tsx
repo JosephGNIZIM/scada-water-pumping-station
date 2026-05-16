@@ -12,7 +12,7 @@ import LineChartPanel from './LineChartPanel';
 import { buildHealthScore, buildMultiSeries, getAlarmPriority, getSensorLabel, getSensorMax, getSensorUnit, makeSparklineData } from '../utils/scada';
 
 const Dashboard: React.FC = () => {
-    const { t } = useI18n();
+    const { t, tr, language } = useI18n();
     const readings = useAppSelector((state) => state.sensor.readings);
     const alarms = useAppSelector((state) => state.alarm.alarms);
     const pumpStatus = useAppSelector((state) => state.pump.status);
@@ -41,9 +41,9 @@ const Dashboard: React.FC = () => {
             </section>
             <section className="summary-grid fade-in">
                 <article className={`summary-card ${warningState}`} data-tutorial="system-health">
-                    <p className="eyebrow">System Health</p>
+                    <p className="eyebrow">{tr('Sante systeme', 'System Health')}</p>
                     <h3>{healthScore}%</h3>
-                    <p>{activeAlarms} active alarm(s), pump {pumpStatus}, sensors streaming live.</p>
+                    <p>{tr(`${activeAlarms} alarme(s) active(s), pompe ${pumpStatus}, capteurs en direct.`, `${activeAlarms} active alarm(s), pump ${pumpStatus}, sensors streaming live.`)}</p>
                 </article>
                 <article className="summary-card glow-ok">
                     <p className="eyebrow">{t('dashboard.operations')}</p>
@@ -64,10 +64,10 @@ const Dashboard: React.FC = () => {
             <section className="panel glow-ok fade-in" data-tutorial="synoptic-preview">
                 <div className="panel-heading">
                     <div>
-                        <p className="eyebrow">Digital Twin</p>
-                        <h2>Animated Plant Synoptic</h2>
+                        <p className="eyebrow">{tr('Jumeau numerique', 'Digital Twin')}</p>
+                        <h2>{tr('Synoptique anime de l installation', 'Animated Plant Synoptic')}</h2>
                     </div>
-                    <Link className="btn btn-ghost" to="/synoptic">Open Synoptic</Link>
+                    <Link className="btn btn-ghost" to="/synoptic">{tr('Ouvrir le synoptique', 'Open Synoptic')}</Link>
                 </div>
                 <SynopticView
                     compact
@@ -84,7 +84,7 @@ const Dashboard: React.FC = () => {
                 {readings.map((reading) => (
                     <div key={reading.id} className="metric-stack">
                         <Gauge
-                            label={getSensorLabel(reading.type)}
+                            label={getSensorLabel(reading.type, language)}
                             value={reading.value}
                             max={getSensorMax(reading.type)}
                             unit={getSensorUnit(reading.type)}
@@ -99,8 +99,8 @@ const Dashboard: React.FC = () => {
                         <section className="panel metric-card">
                             <div className="panel-heading">
                                 <div>
-                                    <p className="eyebrow">Trend</p>
-                                    <h2>{getSensorLabel(reading.type)}</h2>
+                                    <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
+                                    <h2>{getSensorLabel(reading.type, language)}</h2>
                                 </div>
                                 <span className="metric-unit">{getSensorUnit(reading.type)}</span>
                             </div>
@@ -110,7 +110,7 @@ const Dashboard: React.FC = () => {
                 ))}
                 <div className="metric-stack">
                     <Gauge
-                        label="Flow"
+                        label={tr('Debit', 'Flow')}
                         value={flowValue}
                         max={120}
                         unit="m3/h"
@@ -119,8 +119,8 @@ const Dashboard: React.FC = () => {
                     <section className="panel metric-card">
                         <div className="panel-heading">
                             <div>
-                                <p className="eyebrow">Trend</p>
-                                <h2>Flow</h2>
+                                <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
+                                <h2>{tr('Debit', 'Flow')}</h2>
                             </div>
                             <span className="metric-unit">m3/h</span>
                         </div>
@@ -128,7 +128,7 @@ const Dashboard: React.FC = () => {
                     </section>
                 </div>
             </section>
-            <LineChartPanel series={buildMultiSeries(readings)} title="Neon process trends" />
+            <LineChartPanel series={buildMultiSeries(readings, language)} title={tr('Tendances du procede', 'Process trends')} />
             <section className="dashboard-grid fade-in">
                 <PumpStatus />
                 <SensorReadings />

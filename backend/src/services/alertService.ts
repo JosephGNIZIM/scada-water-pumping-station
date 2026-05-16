@@ -1,5 +1,5 @@
 import { Alarm } from '../models/event';
-import { acknowledgeAlarmById, createAlarm, listAlarms } from '../utils/db';
+import { acknowledgeAlarmById, createAlarm, deleteAlarmById, listAlarms } from '../utils/db';
 
 export const getAlarms = async (): Promise<Alarm[]> => {
     return listAlarms();
@@ -13,4 +13,8 @@ export const triggerAlarm = async (
     alarmData: Pick<Alarm, 'description' | 'type'>,
 ): Promise<Alarm> => {
     return createAlarm(alarmData);
+};
+
+export const deleteAlarm = async (alarmId: number): Promise<boolean> => {
+    return deleteAlarmById(alarmId);
 };

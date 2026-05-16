@@ -1,5 +1,61 @@
 import axios from 'axios';
 
+export type UserRole = 'ingenieur' | 'technicien' | 'operateur';
+
+export interface AuthUser {
+    id: number;
+    username: string;
+    displayName: string;
+    role: UserRole;
+    active: boolean;
+    sessionId?: string;
+    csrfToken?: string;
+}
+
+export interface AuthResponse {
+    user: AuthUser;
+    accessToken: string;
+    csrfToken: string;
+    expiresInSeconds: number;
+}
+
+export interface ManagedUser {
+    id: number;
+    username: string;
+    displayName: string;
+    role: UserRole;
+    active: boolean;
+    failedAttempts: number;
+    lockedUntil: string | null;
+    lastLoginAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface LoginHistoryEntry {
+    id: number;
+    userId: number | null;
+    username: string;
+    success: boolean;
+    ip: string | null;
+    userAgent: string | null;
+    reason: string | null;
+    createdAt: string;
+}
+
+export interface AuditLogEntry {
+    id: number;
+    userId: number | null;
+    username: string | null;
+    role: string | null;
+    action: string;
+    entityType: string;
+    entityId: string | null;
+    details: string | null;
+    ip: string | null;
+    createdAt: string;
+}
+
 export interface PumpStatusResponse {
     id: number;
     status: string;
@@ -104,7 +160,104 @@ export interface SimulationReport {
 
 const api = axios.create({
     baseURL: '/api',
+    withCredentials: true,
 });
+
+let authToken: string | null = null;
+let csrfTokenValue: string | null = null;
+
+export const setAuthSession = (session: { accessToken: string | null; csrfToken: string | null }) => {
+    authToken = session.accessToken;
+    csrfTokenValue = session.csrfToken;
+};
+
+export const clearAuthSession = () => {
+    authToken = null;
+    csrfTokenValue = null;
+};
+
+api.interceptors.request.use((config) => {
+    const nextConfig = { ...config };
+    nextConfig.headers = nextConfig.headers || {};
+
+    if (authToken) {
+        nextConfig.headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const method = (nextConfig.method || 'get').toLowerCase();
+    if (method !== 'get' && csrfTokenValue) {
+        nextConfig.headers['x-csrf-token'] = csrfTokenValue;
+    }
+
+    return nextConfig;
+});
+
+export const login = async (username: string, password: string) => {
+    const response = await api.post<AuthResponse>('/auth/login', { username, password });
+    return response.data;
+};
+
+export const refreshAuth = async () => {
+    const response = await api.post<AuthResponse>('/auth/refresh');
+    return response.data;
+};
+
+export const logout = async () => {
+    await api.post('/auth/logout');
+};
+
+export const getCurrentUser = async () => {
+    const response = await api.get<{ user: AuthUser }>('/auth/me');
+    return response.data.user;
+};
+
+export const listUsers = async () => {
+    const response = await api.get<ManagedUser[]>('/auth/users');
+    return response.data;
+};
+
+export const createUser = async (payload: {
+    username: string;
+    displayName: string;
+    password: string;
+    role: UserRole;
+    active?: boolean;
+}) => {
+    const response = await api.post<ManagedUser>('/auth/users', payload);
+    return response.data;
+};
+
+export const updateUser = async (
+    userId: number,
+    payload: Partial<Pick<ManagedUser, 'username' | 'displayName' | 'role' | 'active'>>,
+) => {
+    const response = await api.patch<ManagedUser>(`/auth/users/${userId}`, payload);
+    return response.data;
+};
+
+export const resetUserPassword = async (userId: number, password: string) => {
+    const response = await api.post<ManagedUser>(`/auth/users/${userId}/reset-password`, { password });
+    return response.data;
+};
+
+export const getUserLoginHistory = async (userId: number) => {
+    const response = await api.get<LoginHistoryEntry[]>(`/auth/users/${userId}/login-history`);
+    return response.data;
+};
+
+export const getAuditLogs = async () => {
+    const response = await api.get<AuditLogEntry[]>('/auth/audit-logs');
+    return response.data;
+};
+
+export const getSystemSettings = async () => {
+    const response = await api.get('/auth/settings');
+    return response.data;
+};
+
+export const updateSystemSettings = async (payload: unknown) => {
+    await api.put('/auth/settings', payload);
+};
 
 export const getPumpStatus = async () => {
     try {
@@ -164,6 +317,10 @@ export const acknowledgeAlarm = async (alarmId: number) => {
         console.error('Error acknowledging alarm:', error);
         throw error;
     }
+};
+
+export const deleteAlarm = async (alarmId: number) => {
+    await api.delete(`/alarms/${alarmId}`);
 };
 
 export const getSimulationState = async () => {

@@ -142,6 +142,17 @@ code {
   font-size: clamp(1.2rem, 2vw, 1.8rem);
 }
 
+.session-warning {
+  max-width: 1440px;
+  margin: 0 auto 16px;
+  padding: 12px 18px;
+  border-radius: 18px;
+  background: rgba(255, 159, 28, 0.14);
+  border: 1px solid rgba(255, 159, 28, 0.35);
+  color: #ffd9a0;
+  box-shadow: var(--shadow);
+}
+
 .topnav {
   display: flex;
   flex-wrap: wrap;
@@ -220,6 +231,121 @@ code {
   color: white;
   font-size: 0.75rem;
   box-shadow: 0 0 16px rgba(255, 77, 109, 0.45);
+}
+
+.badge-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.badge-role--ingenieur {
+  background: rgba(255, 77, 109, 0.18);
+  color: #ffb7c5;
+  border-color: rgba(255, 77, 109, 0.35);
+}
+
+.badge-role--technicien {
+  background: rgba(255, 159, 28, 0.16);
+  color: #ffd29a;
+  border-color: rgba(255, 159, 28, 0.35);
+}
+
+.badge-role--operateur {
+  background: rgba(0, 255, 136, 0.12);
+  color: #9cffd0;
+  border-color: rgba(0, 255, 136, 0.28);
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.login-card,
+.page-state--card {
+  width: min(720px, 100%);
+  padding: 32px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(7, 11, 20, 0.94));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-logo-wrap {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--cyan);
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-submit {
+  width: 100%;
+  justify-content: center;
+}
+
+.login-hint-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.auth-error {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 77, 109, 0.15);
+  border: 1px solid rgba(255, 77, 109, 0.3);
+  color: #ffc0cc;
+}
+
+.page-state {
+  max-width: 900px;
+  margin: 80px auto;
+  text-align: center;
+}
+
+.settings-user-table {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-user-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr repeat(3, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.btn-disabled,
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
 }
 
 .live-badge {
@@ -1126,6 +1252,212 @@ code {
   }
 }
 
+.synoptique3d-wrap {
+  position: relative;
+  width: 100%;
+  height: min(72vh, 680px);
+  min-height: 520px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 184, 198, 0.22);
+  background: #050a1a;
+}
+
+.synoptique3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.synoptique3d-canvas:active {
+  cursor: grabbing;
+}
+
+.synoptique3d-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  color: #e9fbff;
+}
+
+.synoptique3d-panel {
+  position: absolute;
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(159, 222, 236, 0.22);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  pointer-events: auto;
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+}
+
+.synoptique3d-panel-title {
+  font-weight: bold;
+  color: #00ddff;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 221, 255, 0.3);
+  margin-bottom: 4px;
+}
+
+.synoptique3d-data-group {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  line-height: 1.4;
+}
+
+.synoptique3d-label {
+  color: #a7b6bd;
+  flex: 0 0 auto;
+}
+
+.synoptique3d-data-group span:last-child {
+  flex: 1;
+  text-align: right;
+  word-break: break-word;
+}
+
+.synoptique3d-separator {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0, 221, 255, 0.1), transparent);
+  margin: 2px 0;
+}
+
+.synoptique3d-panel--left {
+  left: 14px;
+  min-width: 260px;
+  max-width: 320px;
+}
+
+.synoptique3d-panel--right {
+  right: 14px;
+  min-width: 140px;
+  max-width: 180px;
+  flex-direction: column;
+}
+
+.synoptique3d-camera-btn {
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(6, 22, 32, 0.78);
+  color: #e9fbff;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  transition: all 0.2s ease;
+}
+
+.synoptique3d-camera-btn:hover {
+  border-color: rgba(0, 255, 136, 0.65);
+  background: rgba(0, 212, 255, 0.2);
+}
+
+.synoptique3d-scenarios {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border: 1px solid rgba(159, 222, 236, 0.22);
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 8px;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+
+.synoptique3d-scenarios-title {
+  font-weight: bold;
+  color: #00ddff;
+  white-space: nowrap;
+}
+
+.synoptique3d-scenarios-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.synoptique3d-scenario-btn {
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(6, 22, 32, 0.78);
+  color: #e9fbff;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.synoptique3d-scenario-btn:hover {
+  border-color: rgba(255, 170, 0, 0.65);
+  background: rgba(255, 170, 0, 0.15);
+}
+
+.synoptique3d-alarm {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border: 2px solid rgba(255, 77, 109, 0.8);
+  background: rgba(180, 20, 20, 0.88);
+  color: #fff;
+  border-radius: 8px;
+  letter-spacing: 0.06em;
+  font-weight: bold;
+  animation: alarmPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(255, 34, 51, 0.5);
+  z-index: 10;
+}
+
+@keyframes alarmPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.synoptique3d-hud .ok {
+  color: #00ff88;
+  font-weight: 600;
+}
+
+.synoptique3d-hud .warning {
+  color: #ffaa00;
+  font-weight: 600;
+}
+
+.synoptique3d-hud .danger {
+  color: #ff4466;
+  font-weight: 600;
+}
+
+.synoptique3d-hud .muted {
+  color: #8899aa;
+}
+
+.synoptique3d-hud .terrain {
+  color: #ff8800;
+  font-weight: 600;
+}
+
+.synoptique3d-hud .simulation {
+  color: #00ccff;
+}
+
 @media (max-width: 1180px) {
   .summary-grid,
   .gauges-grid,
@@ -1192,5 +1524,27 @@ code {
 
   .control-room-clock {
     font-size: 2rem;
+  }
+
+  .synoptique3d-wrap {
+    min-height: 620px;
+  }
+
+  .synoptique3d-panel--left,
+  .synoptique3d-panel--right,
+  .synoptique3d-scenarios,
+  .synoptique3d-alarm {
+    left: 12px;
+    right: 12px;
+    transform: none;
+  }
+
+  .synoptique3d-panel--right {
+    top: 164px;
+  }
+
+  .synoptique3d-scenarios {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }

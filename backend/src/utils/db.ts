@@ -1,10 +1,20 @@
+import fs from 'fs';
 import { QueryTypes, Sequelize } from 'sequelize';
 import path from 'path';
 import { Alarm } from '../models/event';
 import { Pump } from '../models/pump';
 import { Sensor } from '../models/sensor';
 
-const storagePath = process.env.DB_STORAGE || path.resolve(process.cwd(), 'data', 'scada.sqlite');
+const resolveStoragePath = (): string => {
+    if (process.env.DB_STORAGE) {
+        return path.resolve(process.env.DB_STORAGE);
+    }
+
+    return path.resolve(__dirname, '..', '..', 'data', 'scada.sqlite');
+};
+
+const storagePath = resolveStoragePath();
+fs.mkdirSync(path.dirname(storagePath), { recursive: true });
 
 const sequelize = new Sequelize({
     dialect: 'sqlite',
@@ -407,6 +417,29 @@ export const acknowledgeAlarmById = async (alarmId: number): Promise<Alarm | nul
     }
 
     return toAlarm(rows[0]);
+};
+
+export const deleteAlarmById = async (alarmId: number): Promise<boolean> => {
+    const rows = await sequelize.query<{ count: number }>(
+        'SELECT COUNT(*) as count FROM alarms WHERE id = :alarmId',
+        {
+            replacements: { alarmId },
+            type: QueryTypes.SELECT,
+        },
+    );
+
+    if (Number(rows[0]?.count ?? 0) === 0) {
+        return false;
+    }
+
+    await sequelize.query(
+        'DELETE FROM alarms WHERE id = :alarmId',
+        {
+            replacements: { alarmId },
+        },
+    );
+
+    return true;
 };
 
 export const createAlarm = async (

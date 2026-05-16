@@ -8,7 +8,7 @@ import { getSensorLabel, getSensorUnit, makeSparklineData } from '../utils/scada
 const SensorReadings: React.FC = () => {
     const dispatch = useAppDispatch();
     const { readings, status, error } = useAppSelector((state) => state.sensor);
-    const { t, formatDateTime } = useI18n();
+    const { t, formatDateTime, language } = useI18n();
 
     useEffect(() => {
         if (status === 'idle') {
@@ -42,7 +42,7 @@ const SensorReadings: React.FC = () => {
                     {readings.map((reading) => (
                         <li key={reading.id} className="reading-item">
                             <div>
-                                <strong>{getSensorLabel(reading.type)}</strong>
+                                <strong>{getSensorLabel(reading.type, language)}</strong>
                                 <p className="muted">{t('sensor.timestamp')}: {formatDateTime(reading.timestamp)}</p>
                                 <Sparkline values={makeSparklineData(reading)} height={42} />
                             </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTutorial } from '../tutorial/TutorialContext';
+import { useI18n } from '../i18n';
 
 const quickStartSteps = [
     {
@@ -50,6 +51,7 @@ const faqItems = [
 
 const TutorialPage: React.FC = () => {
     const { startTutorial } = useTutorial();
+    const { tr } = useI18n();
     const [openIndex, setOpenIndex] = React.useState<number | null>(0);
 
     return (
@@ -57,13 +59,13 @@ const TutorialPage: React.FC = () => {
             <section className="hero-card">
                 <div>
                     <p className="eyebrow">Tutoriel</p>
-                    <h1>Guide d utilisation de la station SCADA</h1>
+                    <h1>{tr('Guide d utilisation de la station SCADA', 'SCADA station user guide')}</h1>
                     <p className="hero-copy">
-                        Cette page aide les nouveaux utilisateurs a comprendre rapidement le tableau de bord, le synoptique, les alarmes et les rapports.
+                        {tr('Cette page aide les nouveaux utilisateurs a comprendre rapidement le tableau de bord, le synoptique, les alarmes et les rapports.', 'This page helps new users quickly understand the dashboard, synoptic, alarms and reports.')}
                     </p>
                 </div>
                 <div className="action-row">
-                    <button className="btn btn-primary" onClick={startTutorial}>Lancer le tour guide</button>
+                    <button className="btn btn-primary" onClick={startTutorial}>{tr('Lancer le guide', 'Start guided tour')}</button>
                 </div>
             </section>
 
@@ -81,8 +83,8 @@ const TutorialPage: React.FC = () => {
                 <section className="panel glow-ok">
                     <div className="panel-heading">
                         <div>
-                            <p className="eyebrow">Roles</p>
-                            <h2>Roles utilisateurs</h2>
+                            <p className="eyebrow">{tr('Roles', 'Roles')}</p>
+                            <h2>{tr('Roles utilisateurs', 'User roles')}</h2>
                         </div>
                     </div>
                     <div className="role-table-wrap">
@@ -134,8 +136,8 @@ const TutorialPage: React.FC = () => {
                 <section className="panel glow-warning">
                     <div className="panel-heading">
                         <div>
-                            <p className="eyebrow">Demo</p>
-                            <h2>Simulation d une journee d exploitation</h2>
+                            <p className="eyebrow">{tr('Demo', 'Demo')}</p>
+                            <h2>{tr('Simulation d une journee d exploitation', 'Operating day simulation')}</h2>
                         </div>
                     </div>
                     <div className="tutorial-demo">
@@ -156,7 +158,7 @@ const TutorialPage: React.FC = () => {
                 <div className="panel-heading">
                     <div>
                         <p className="eyebrow">FAQ</p>
-                        <h2>Questions frequentes</h2>
+                        <h2>{tr('Questions frequentes', 'Frequently asked questions')}</h2>
                     </div>
                 </div>
                 <div className="faq-list">

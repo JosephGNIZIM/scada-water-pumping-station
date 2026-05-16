@@ -1,9 +1,11 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTutorial } from './TutorialContext';
+import { useI18n } from '../i18n';
 
 const GuidedTour: React.FC = () => {
     const { isOpen, currentStepIndex, steps, nextStep, previousStep, closeTutorial } = useTutorial();
+    const { tr } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
     const [rect, setRect] = React.useState<DOMRect | null>(null);
@@ -66,21 +68,21 @@ const GuidedTour: React.FC = () => {
         <div className="tutorial-overlay">
             {rect && <div className="tutorial-highlight" style={highlightStyle} />}
             <div className="tutorial-card" style={cardStyle}>
-                <p className="eyebrow">Tutoriel interactif</p>
+                <p className="eyebrow">{tr('Tutoriel interactif', 'Interactive tutorial')}</p>
                 <h3>{step.title}</h3>
                 <p>{step.description}</p>
                 <div className="tutorial-progress">
-                    Etape {currentStepIndex + 1}/{steps.length}
+                    {tr('Etape', 'Step')} {currentStepIndex + 1}/{steps.length}
                 </div>
                 <div className="action-row">
                     <button className="btn btn-secondary" onClick={() => previousStep()} disabled={currentStepIndex === 0}>
-                        Precedent
+                        {tr('Precedent', 'Previous')}
                     </button>
                     <button className="btn btn-primary" onClick={() => nextStep()}>
-                        {currentStepIndex === steps.length - 1 ? 'Terminer' : 'Suivant'}
+                        {currentStepIndex === steps.length - 1 ? tr('Terminer', 'Finish') : tr('Suivant', 'Next')}
                     </button>
                     <button className="btn btn-ghost" onClick={() => closeTutorial(true)}>
-                        Passer
+                        {tr('Passer', 'Skip')}
                     </button>
                 </div>
             </div>

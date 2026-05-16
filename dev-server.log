@@ -1,0 +1,38 @@
+
+> scada-water-pumping-station-workspace@1.0.0 dev
+> node scripts/dev.js
+
+[36m[backend][0m 
+> scada-water-pumping-station@1.0.0 start
+> ts-node src/app.ts
+
+[33m[frontend][0m 
+> scada-water-pumping-station-frontend@1.0.0 start
+> vite
+
+[33m[frontend][0m 
+  [32m[1mVITE[22m v4.5.14[39m  [2mready in [0m[1m792[22m[2m[0m ms[22m
+
+[33m[frontend][0m   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3001[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[36m[backend][0m Connection to the database has been established successfully at C:\Users\User\Desktop\scada-water-pumping-station\backend\data\scada.sqlite.
+[36m[backend][0m Server is running on port 3000
+[33m[frontend][0m [2m14:30:57[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SimulationPage.tsx[22m
+[33m[frontend][0m [2m14:31:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SimulationPage.tsx[22m
+[33m[frontend][0m [2m14:33:46[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ControlRoomPage.tsx, /src/components/SensorReadings.tsx, /src/pages/AlarmsPage.tsx, /src/pages/HistoryPage.tsx, /src/pages/SimulationPage.tsx, /src/components/AlarmPanel.tsx, /src/components/Dashboard.tsx[22m
+[33m[frontend][0m [2m09:43:55[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:44:24[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:44:34[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:44:47[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:44:57[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:45:06[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:45:19[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:45:43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:45:59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:46:34[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/controls/HUD.jsx[22m
+[33m[frontend][0m [2m09:46:55[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[33m[frontend][0m [2m09:47:06[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:47:18[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:47:33[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:47:52[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m
+[33m[frontend][0m [2m09:48:01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Synoptique3D/Synoptique3D.jsx[22m

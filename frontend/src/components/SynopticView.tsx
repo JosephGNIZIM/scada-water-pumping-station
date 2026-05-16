@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../i18n';
 
 interface SynopticViewProps {
     primaryPumpRunning: boolean;
@@ -29,6 +30,7 @@ const SynopticView: React.FC<SynopticViewProps> = ({
     onValveToggle,
     compact = false,
 }) => {
+    const { tr } = useI18n();
     const sizeClass = compact ? 'synoptic compact' : 'synoptic';
     const waterA = 260 - Math.max(0, Math.min(100, tankLevelA)) * 1.5;
     const waterB = 260 - Math.max(0, Math.min(100, tankLevelB)) * 1.5;
@@ -66,11 +68,11 @@ const SynopticView: React.FC<SynopticViewProps> = ({
 
                 <rect x="80" y="80" width="170" height="210" rx="20" className="tank-outline" />
                 <rect x="130" y={waterA} width="70" height={290 - waterA} rx="12" fill={`url(#${waterGradient})`} />
-                <text x="165" y="66" textAnchor="middle" className="synoptic-label">Tank A</text>
+                <text x="165" y="66" textAnchor="middle" className="synoptic-label">{tr('Bac A', 'Tank A')}</text>
 
                 <rect x="710" y="80" width="170" height="210" rx="20" className="tank-outline" />
                 <rect x="760" y={waterB} width="70" height={290 - waterB} rx="12" fill={`url(#${waterGradient})`} />
-                <text x="795" y="66" textAnchor="middle" className="synoptic-label">Tank B</text>
+                <text x="795" y="66" textAnchor="middle" className="synoptic-label">{tr('Bac B', 'Tank B')}</text>
 
                 <path d="M250 200H360M600 200H710M480 160V120M480 240V280" className="pipe-static" />
                 <path d="M250 200H360M600 200H710M480 160V120M480 240V280" className="pipe-flow" style={{ strokeDasharray: `${flowDash} ${flowDash}`, opacity: flowRate > 0 ? 1 : 0.2 }} />
@@ -88,7 +90,7 @@ const SynopticView: React.FC<SynopticViewProps> = ({
                             role="button"
                             tabIndex={0}
                         >
-                            <title>{`Valve ${index + 1}: ${opening.toFixed(0)}%`}</title>
+                            <title>{`${tr('Vanne', 'Valve')} ${index + 1}: ${opening.toFixed(0)}%`}</title>
                             <circle cx={x} cy={y} r="18" />
                             <path d={`M${x - 10} ${y}H${x + 10}M${x} ${y - 10}V${y + 10}`} />
                             <text x={x} y={y + 36} textAnchor="middle" className="synoptic-mini-label">{opening.toFixed(0)}%</text>
@@ -97,7 +99,7 @@ const SynopticView: React.FC<SynopticViewProps> = ({
                 })}
 
                 <g className={`pump-symbol ${primaryPumpRunning ? 'running' : ''}`} onClick={onPrimaryPumpToggle} role="button" tabIndex={0}>
-                    <title>{`Pump P1: ${primaryPumpRunning ? 'running' : 'stopped'}`}</title>
+                    <title>{`${tr('Pompe', 'Pump')} P1: ${primaryPumpRunning ? tr('en marche', 'running') : tr('arretee', 'stopped')}`}</title>
                     <circle cx="360" cy="200" r="38" className="pump-shell" />
                     <g className="pump-rotor">
                         <path d="M360 166L372 194L401 200L372 206L360 234L348 206L319 200L348 194Z" className="pump-blade" />
@@ -106,7 +108,7 @@ const SynopticView: React.FC<SynopticViewProps> = ({
                 </g>
 
                 <g className={`pump-symbol ${secondaryPumpRunning ? 'running' : ''}`} onClick={onSecondaryPumpToggle} role="button" tabIndex={0}>
-                    <title>{`Pump P2: ${secondaryPumpRunning ? 'running' : 'stopped'}`}</title>
+                    <title>{`${tr('Pompe', 'Pump')} P2: ${secondaryPumpRunning ? tr('en marche', 'running') : tr('arretee', 'stopped')}`}</title>
                     <circle cx="600" cy="200" r="38" className="pump-shell" />
                     <g className="pump-rotor">
                         <path d="M600 166L612 194L641 200L612 206L600 234L588 206L559 200L588 194Z" className="pump-blade" />
@@ -119,7 +121,7 @@ const SynopticView: React.FC<SynopticViewProps> = ({
                     <path d="M480 280V340H880" className="pipe-flow" style={{ strokeDasharray: `${flowDash} ${flowDash}`, opacity: flowRate > 0 ? 1 : 0.2 }} />
                 </g>
 
-                <text x="882" y="360" className="synoptic-label">Distribution</text>
+                <text x="882" y="360" className="synoptic-label">{tr('Distribution', 'Distribution')}</text>
             </svg>
         </div>
     );

@@ -1,8 +1,79 @@
 import { Alarm, SensorReading } from '../services/api';
+import { Language } from '../i18n';
 
 export type AlarmPriority = 'critical' | 'high' | 'medium' | 'low';
 
-export const getSensorLabel = (type: string): string => {
+export const getSensorLabel = (type: string, language: Language = 'fr'): string => {
+    const labels: Record<string, Record<Language, string>> = {
+        'water-level': { fr: 'Niveau moyen eau', en: 'Water Level Avg' },
+        'tank1-level': { fr: 'Niveau bac 1', en: 'Tank 1 Level' },
+        'tank2-level': { fr: 'Niveau bac 2', en: 'Tank 2 Level' },
+        'pump-temperature': { fr: 'Temp. pompe 1', en: 'Pump 1 Temp' },
+        'pump2-temperature': { fr: 'Temp. pompe 2', en: 'Pump 2 Temp' },
+        'line-pressure': { fr: 'Pression', en: 'Pressure' },
+        'flow-rate': { fr: 'Debit', en: 'Flow' },
+        energy: { fr: 'Energie', en: 'Energy' },
+    };
+    return labels[type]?.[language] ?? type;
+};
+
+export const getPumpStatusLabel = (status: string, language: Language = 'fr'): string => {
+    const labels: Record<string, Record<Language, string>> = {
+        running: { fr: 'En marche', en: 'Running' },
+        stopped: { fr: 'Arretee', en: 'Stopped' },
+        faulted: { fr: 'En defaut', en: 'Faulted' },
+        standby: { fr: 'En attente', en: 'Standby' },
+        idle: { fr: 'Inactive', en: 'Idle' },
+        paused: { fr: 'En pause', en: 'Paused' },
+    };
+    return labels[status]?.[language] ?? status;
+};
+
+export const getPriorityLabel = (priority: AlarmPriority | 'all', language: Language = 'fr'): string => {
+    const labels: Record<AlarmPriority | 'all', Record<Language, string>> = {
+        all: { fr: 'Toutes', en: 'All' },
+        critical: { fr: 'Critique', en: 'Critical' },
+        high: { fr: 'Haute', en: 'High' },
+        medium: { fr: 'Moyenne', en: 'Medium' },
+        low: { fr: 'Faible', en: 'Low' },
+    };
+    return labels[priority][language];
+};
+
+const replaceText = (value: string, search: string, replacement: string): string =>
+    value.split(search).join(replacement);
+
+export const translateRuntimeText = (text: string, language: Language = 'fr'): string => {
+    if (language === 'en') {
+        return [
+            ['Demarrage normal', 'Normal startup'],
+            ['Forte demande', 'High demand'],
+            ['Panne critique', 'Critical failure'],
+            ['Maintenance programmee', 'Scheduled maintenance'],
+            ['Journee complete', 'Full day'],
+            ['Bacs a 50%, demarrage progressif des pompes.', 'Tanks at 50%, progressive pump startup.'],
+            ['Bac 2 se vide rapidement, pompes sollicitees.', 'Tank 2 drains quickly, pumps are heavily used.'],
+            ['Fuite bac 1 et panne pompe 2 avec cascade d alarmes.', 'Tank 1 leak and pump 2 failure with cascading alarms.'],
+            ['Arret sequentiel, vidange controlee et vannes manipulees.', 'Sequential stop, controlled draining and valve operations.'],
+            ['Cycle accelere x60 avec demande variable matin, midi et soir.', 'Accelerated x60 cycle with variable morning, noon and evening demand.'],
+        ].reduce((value, [search, replacement]) => replaceText(value, search, replacement), text);
+    }
+
+    return [
+        ['Broker reachable, subscription test passed.', 'Broker joignable, test d abonnement reussi.'],
+        ['system', 'systeme'],
+        ['running', 'en marche'],
+        ['stopped', 'arretee'],
+        ['faulted', 'en defaut'],
+        ['idle', 'inactive'],
+        ['paused', 'en pause'],
+        ['normal', 'normal'],
+        ['warning', 'avertissement'],
+        ['alarm', 'alarme'],
+    ].reduce((value, [search, replacement]) => replaceText(value, search, replacement), text);
+};
+
+export const getLegacySensorLabel = (type: string): string => {
     switch (type) {
         case 'water-level':
             return 'Water Level Avg';
@@ -103,9 +174,9 @@ export const buildHealthScore = (readings: SensorReading[], alarms: Alarm[]): nu
     return Math.max(8, Math.min(100, Math.round(score)));
 };
 
-export const buildMultiSeries = (readings: SensorReading[]) =>
+export const buildMultiSeries = (readings: SensorReading[], language: Language = 'fr') =>
     readings.map((reading) => ({
-        label: getSensorLabel(reading.type),
+        label: getSensorLabel(reading.type, language),
         color:
             reading.type === 'water-level' || reading.type === 'tank1-level'
                 ? '#00d4ff'

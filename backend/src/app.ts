@@ -1,6 +1,8 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { Server } from 'http';
 import { initializeDatabase, testConnection } from './utils/db';
+import { initializeSecurityDatabase } from './utils/securityDb';
 import routes from './routes/index';
 import { initializeSimulation } from './services/simulationService';
 
@@ -8,6 +10,7 @@ const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Set up routes
 app.use('/api', routes);
@@ -25,6 +28,7 @@ export const startServer = async (port = Number(process.env.PORT || 3000)): Prom
     }
 
     await initializeDatabase();
+    await initializeSecurityDatabase();
     await initializeSimulation();
 
     return new Promise((resolve) => {

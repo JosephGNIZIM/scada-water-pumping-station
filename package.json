@@ -34,7 +34,7 @@
     "extraResources": [
       {
         "from": "frontend/dist",
-        "to": "frontend"
+        "to": "frontend/dist"
       },
       {
         "from": "backend/dist",
@@ -67,6 +67,7 @@
       "backend/node_modules/**/*"
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",

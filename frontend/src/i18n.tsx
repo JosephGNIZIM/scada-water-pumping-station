@@ -143,6 +143,7 @@ interface I18nContextValue {
     language: Language;
     setLanguage: (language: Language) => void;
     t: (key: string) => string;
+    tr: (fr: string, en: string) => string;
     formatDateTime: (value: string | number | Date) => string;
 }
 
@@ -171,6 +172,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
         language,
         setLanguage,
         t: (key: string) => messages[language][key] ?? key,
+        tr: (fr: string, en: string) => language === 'fr' ? fr : en,
         formatDateTime: (value: string | number | Date) =>
             new Date(value).toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US'),
     }), [language]);

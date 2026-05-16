@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, NavLink, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, NavLink, Route, Routes } from 'react-router-dom';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
 import Dashboard from './components/Dashboard';
@@ -21,21 +21,53 @@ import AboutPage from './pages/AboutPage';
 import DiagnosticsPage from './pages/DiagnosticsPage';
 import SimulationPage from './pages/SimulationPage';
 import { fetchSimulationStateAsync } from './store/slices/simulationSlice';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import ProtectedRoute from './auth/ProtectedRoute';
+import { UserRole } from './services/api';
+import LoginPage from './pages/LoginPage';
+import UnauthorizedPage from './pages/UnauthorizedPage';
 
-const App: React.FC = () => {
-  const { t } = useI18n();
+const roleBadgeMeta: Record<UserRole, { label: string; className: string; icon: string }> = {
+  ingenieur: { label: 'Ingenieur', className: 'badge-role badge-role--ingenieur', icon: 'Key' },
+  technicien: { label: 'Technicien', className: 'badge-role badge-role--technicien', icon: 'Tools' },
+  operateur: { label: 'Operateur', className: 'badge-role badge-role--operateur', icon: 'Eye' },
+};
+
+const navigation: Array<{ to: string; label: string; roles: UserRole[]; tutorial?: string; className?: string }> = [
+  { to: '/', label: 'Accueil', roles: ['ingenieur', 'technicien', 'operateur'], tutorial: 'nav-home' },
+  { to: '/dashboard', label: 'Tableau de bord', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/synoptic', label: 'Synoptique', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/simulation', label: 'Simulation', roles: ['ingenieur', 'technicien'] },
+  { to: '/pump-status', label: 'Pompes', roles: ['ingenieur', 'technicien'] },
+  { to: '/sensor-readings', label: 'Capteurs', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/alarms', label: 'Alarmes', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/history', label: 'Historique', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/control-room', label: 'Salle de controle', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/tutorial', label: 'Tutoriel', roles: ['ingenieur', 'technicien', 'operateur'], className: 'nav-link--tutorial' },
+  { to: '/about', label: 'A propos', roles: ['ingenieur', 'technicien', 'operateur'] },
+  { to: '/diagnostics', label: 'Diagnostic', roles: ['ingenieur'] },
+  { to: '/settings', label: 'Parametres', roles: ['ingenieur', 'technicien'] },
+];
+
+const AppShell: React.FC = () => {
+  const { t, tr, language, formatDateTime } = useI18n();
   const dispatch = useAppDispatch();
+  const { user, role, warningVisible, logout, hasRole } = useAuth();
   const activeAlarmCount = useAppSelector((state) => state.alarm.alarms.filter((alarm) => !alarm.acknowledged).length);
   const simulation = useAppSelector((state) => state.simulation.state);
   const lastSyncCandidates = [
     useAppSelector((state) => state.pump.lastUpdated),
     ...useAppSelector((state) => state.sensor.readings.map((reading) => reading.timestamp)),
   ].filter(Boolean);
-  const systemStatus = activeAlarmCount > 0 ? 'Alarm state' : 'Nominal';
-  const mqttStatus = simulation?.communicationOk === false ? 'MQTT disconnected' : 'MQTT connected';
+  const systemStatus = activeAlarmCount > 0 ? tr('Etat alarme', 'Alarm state') : tr('Nominal', 'Nominal');
+  const mqttStatus = simulation?.communicationOk === false ? tr('MQTT deconnecte', 'MQTT disconnected') : tr('MQTT connecte', 'MQTT connected');
   const [uptimeSeconds, setUptimeSeconds] = React.useState(0);
 
   React.useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     dispatch(fetchPumpStatusAsync());
     dispatch(fetchSensorReadingsAsync());
     dispatch(fetchAlarmsAsync());
@@ -56,79 +88,104 @@ const App: React.FC = () => {
       window.clearInterval(refresh);
       window.clearInterval(uptime);
     };
-  }, [dispatch]);
+  }, [dispatch, user]);
 
   const lastSync = lastSyncCandidates.sort().slice(-1)[0];
+  const badge = role ? roleBadgeMeta[role] : null;
 
   return (
-    <Router>
-      <div className="app-shell">
-        <header className="topbar">
-          <div className="brand-wrap">
-            <div className="brand-icon-wrap">
-              <FactoryIcon className="brand-icon" />
-            </div>
-            <div>
-              <p className="eyebrow">{t('app.tagline')}</p>
-              <h1 className="topbar-title">{t('app.title')}</h1>
-            </div>
+    <div className="app-shell">
+      {warningVisible && (
+        <div className="session-warning">
+          Votre session expirera dans moins de 2 minutes sans activite.
+        </div>
+      )}
+      <header className="topbar">
+        <div className="brand-wrap">
+          <div className="brand-icon-wrap">
+            <FactoryIcon className="brand-icon" />
           </div>
-          <nav className="topnav">
-            <span className={`live-badge ${simulation?.mode === 'simulation' ? 'live-badge--sim' : ''}`} data-tutorial="live-badge">
-              {simulation?.mode === 'simulation' ? 'MODE SIMULATION' : 'LIVE'}
+          <div>
+            <p className="eyebrow">{t('app.tagline')}</p>
+            <h1 className="topbar-title">{t('app.title')}</h1>
+          </div>
+        </div>
+        <nav className="topnav">
+          <span className={`live-badge ${simulation?.mode === 'simulation' ? 'live-badge--sim' : ''}`} data-tutorial="live-badge">
+            {simulation?.mode === 'simulation' ? tr('MODE SIMULATION', 'SIMULATION MODE') : tr('DIRECT', 'LIVE')}
+          </span>
+          {navigation.filter((item) => hasRole(item.roles)).map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) => isActive ? `nav-link active ${item.className || ''}`.trim() : `nav-link ${item.className || ''}`.trim()}
+              data-tutorial={item.tutorial}
+            >
+              {language === 'fr' ? item.label : {
+                Accueil: 'Home',
+                'Tableau de bord': 'Dashboard',
+                Synoptique: 'Synoptic',
+                Simulation: 'Simulation',
+                Pompes: 'Pumps',
+                Capteurs: 'Sensors',
+                Alarmes: 'Alarms',
+                Historique: 'History',
+                'Salle de controle': 'Control Room',
+                Tutoriel: 'Tutorial',
+                'A propos': 'About',
+                Diagnostic: 'Diagnostics',
+                Parametres: 'Settings',
+              }[item.label] ?? item.label}
+              {item.to === '/alarms' && activeAlarmCount > 0 && <span className="nav-counter">{activeAlarmCount}</span>}
+            </NavLink>
+          ))}
+          {badge && (
+            <span className={badge.className}>
+              {badge.icon} {user?.displayName}
             </span>
-            <NavLink to="/" end className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'} data-tutorial="nav-home">{t('nav.home')}</NavLink>
-            <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>{t('nav.dashboard')}</NavLink>
-            <NavLink to="/synoptic" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Synoptic</NavLink>
-            <NavLink to="/simulation" className={({ isActive }) => isActive ? 'nav-link active nav-link--simulation' : 'nav-link nav-link--simulation'}>
-              <span className="nav-gear-play">SIM</span>
-              Simulation
-              <span className="nav-demo-badge">DEMO</span>
-            </NavLink>
-            <NavLink to="/pump-status" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>{t('nav.pump')}</NavLink>
-            <NavLink to="/sensor-readings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>{t('nav.sensors')}</NavLink>
-            <NavLink to="/alarms" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-              {t('nav.alarms')}
-              {activeAlarmCount > 0 && <span className="nav-counter">{activeAlarmCount}</span>}
-            </NavLink>
-            <NavLink to="/history" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>History</NavLink>
-            <NavLink to="/control-room" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Control Room</NavLink>
-            <NavLink to="/tutorial" className={({ isActive }) => isActive ? 'nav-link active nav-link--tutorial' : 'nav-link nav-link--tutorial'}>
-              <span className="nav-question">?</span>
-              Tutoriel
-            </NavLink>
-            <NavLink to="/about" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>A propos</NavLink>
-            <NavLink to="/diagnostics" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Diagnostic</NavLink>
-            <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>{t('nav.settings')}</NavLink>
-          </nav>
-        </header>
-        <main className="page-shell">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/synoptic" element={<SynopticPage />} />
-            <Route path="/simulation" element={<SimulationPage />} />
-            <Route path="/pump-status" element={<PumpStatus />} />
-            <Route path="/sensor-readings" element={<SensorReadings />} />
-            <Route path="/alarms" element={<AlarmsPage />} />
-            <Route path="/history" element={<HistoryPage />} />
-            <Route path="/control-room" element={<ControlRoomPage />} />
-            <Route path="/tutorial" element={<TutorialPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/diagnostics" element={<DiagnosticsPage />} />
-          </Routes>
-        </main>
-        <footer className="app-footer">
-          <span><i className={`footer-dot ${activeAlarmCount > 0 ? 'alarm' : 'ok'}`} /> {systemStatus}</span>
-          <span>{simulation?.mode === 'simulation' ? 'Simulation active' : 'Mode reel'} · {mqttStatus}</span>
-          <span>Uptime {new Date(uptimeSeconds * 1000).toISOString().slice(11, 19)}</span>
-          <span>Last sync {lastSync ? new Date(lastSync).toLocaleTimeString() : '--:--:--'}</span>
-        </footer>
-        <GuidedTour />
-      </div>
-    </Router>
+          )}
+          <button className="btn btn-secondary" onClick={() => logout()}>
+            {tr('Deconnexion', 'Log out')}
+          </button>
+        </nav>
+      </header>
+      <main className="page-shell">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
+          <Route path="/" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><Home /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/synoptic" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><SynopticPage /></ProtectedRoute>} />
+          <Route path="/simulation" element={<ProtectedRoute roles={['ingenieur', 'technicien']}><SimulationPage /></ProtectedRoute>} />
+          <Route path="/pump-status" element={<ProtectedRoute roles={['ingenieur', 'technicien']}><PumpStatus /></ProtectedRoute>} />
+          <Route path="/sensor-readings" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><SensorReadings /></ProtectedRoute>} />
+          <Route path="/alarms" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><AlarmsPage /></ProtectedRoute>} />
+          <Route path="/history" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><HistoryPage /></ProtectedRoute>} />
+          <Route path="/control-room" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><ControlRoomPage /></ProtectedRoute>} />
+          <Route path="/tutorial" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><TutorialPage /></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute roles={['ingenieur', 'technicien', 'operateur']}><AboutPage /></ProtectedRoute>} />
+          <Route path="/diagnostics" element={<ProtectedRoute roles={['ingenieur']}><DiagnosticsPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute roles={['ingenieur', 'technicien']}><Settings /></ProtectedRoute>} />
+        </Routes>
+      </main>
+      <footer className="app-footer">
+        <span><i className={`footer-dot ${activeAlarmCount > 0 ? 'alarm' : 'ok'}`} /> {systemStatus}</span>
+        <span>{simulation?.mode === 'simulation' ? tr('Simulation active', 'Simulation active') : tr('Mode reel', 'Real mode')} - {mqttStatus}</span>
+        <span>{tr('Disponibilite', 'Uptime')} {new Date(uptimeSeconds * 1000).toISOString().slice(11, 19)}</span>
+        <span>{tr('Derniere synchro', 'Last sync')} {lastSync ? formatDateTime(lastSync) : '--:--:--'}</span>
+      </footer>
+      <GuidedTour />
+    </div>
   );
 };
+
+const App: React.FC = () => (
+  <AuthProvider>
+    <Router>
+      <AppShell />
+    </Router>
+  </AuthProvider>
+);
 
 export default App;
