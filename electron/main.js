@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, dialog } = require('electron');
 const fs = require('fs');
+const http = require('http');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -22,19 +23,33 @@ let backendController = null;
 let mosquittoWarning = null;
 let activeFrontendPort = Number.parseInt(process.env.FRONTEND_PORT || `${DEFAULT_FRONTEND_PORT}`, 10);
 let shutdownPromise = null;
+let useLocalFrontendFallback = false;
+let frontendFallbackAttempted = false;
 
 const createLogger = () => {
   const logDirectory = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(logDirectory, { recursive: true });
   const logFile = path.join(logDirectory, 'electron.log');
 
+  const writeToConsole = (stream, line) => {
+    try {
+      if (stream?.writable) {
+        stream.write(line);
+      }
+    } catch (error) {
+      if (error?.code !== 'EPIPE') {
+        throw error;
+      }
+    }
+  };
+
   const write = (level, message) => {
     const line = `${new Date().toISOString()} [${level}] ${message}\n`;
     fs.appendFileSync(logFile, line);
     if (level === 'ERROR') {
-      console.error(line.trim());
+      writeToConsole(process.stderr, line);
     } else {
-      console.log(line.trim());
+      writeToConsole(process.stdout, line);
     }
   };
 
@@ -58,6 +73,43 @@ const iconPath = getResourcePath('electron', 'buildResources', 'icon.png');
 const getFrontendOrigin = () => `http://127.0.0.1:${activeFrontendPort}`;
 
 const wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+
+const isFrontendReachable = (port, timeoutMs = 1500) =>
+  new Promise((resolve) => {
+    const request = http.get(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: '/',
+        timeout: timeoutMs,
+      },
+      (response) => {
+        response.resume();
+        resolve(true);
+      },
+    );
+
+    request.on('timeout', () => {
+      request.destroy();
+      resolve(false);
+    });
+
+    request.on('error', () => resolve(false));
+  });
+
+const waitForReachableFrontend = async (port, timeoutMs = 30000) => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await isFrontendReachable(port)) {
+      return true;
+    }
+
+    await wait(500);
+  }
+
+  return isFrontendReachable(port);
+};
 
 const updateSplashProgress = (progress, label) => {
   if (!splashWindow || splashWindow.isDestroyed()) {
@@ -223,9 +275,28 @@ const terminatePreviousAppInstance = async () => {
 
 const selectFrontendPort = async () => {
   if (isDevMode) {
-    activeFrontendPort = Number.parseInt(process.env.FRONTEND_PORT || `${DEFAULT_FRONTEND_PORT}`, 10);
-    process.env.FRONTEND_PORT = `${activeFrontendPort}`;
-    return activeFrontendPort;
+    const preferredPort = Number.parseInt(process.env.FRONTEND_PORT || `${DEFAULT_FRONTEND_PORT}`, 10);
+    const candidatePorts = [
+      preferredPort,
+      ...FRONTEND_PORT_CANDIDATES.filter((port) => port !== preferredPort),
+    ];
+
+    for (const candidatePort of candidatePorts) {
+      if (await waitForReachableFrontend(candidatePort, candidatePort === preferredPort ? 15000 : 2000)) {
+        activeFrontendPort = candidatePort;
+        process.env.FRONTEND_PORT = `${candidatePort}`;
+        logger.info(`Connected to development frontend on port ${candidatePort}.`);
+        useLocalFrontendFallback = false;
+        return candidatePort;
+      }
+    }
+
+    logger.warn(`Development frontend unreachable on ${candidatePorts.join(', ')}. Falling back to local dist server.`);
+    useLocalFrontendFallback = true;
+    activeFrontendPort = preferredPort;
+    process.env.FRONTEND_PORT = `${preferredPort}`;
+    await releasePortWithKillPort(preferredPort, 'frontend fallback cleanup');
+    return preferredPort;
   }
 
   await releasePortWithKillPort(DEFAULT_FRONTEND_PORT, 'default frontend port');
@@ -245,13 +316,77 @@ const selectFrontendPort = async () => {
 };
 
 const releaseFrontendPorts = async () => {
-  if (isDevMode) {
+  if (isDevMode && !useLocalFrontendFallback) {
     return;
   }
 
   if (activeFrontendPort) {
     await releasePortWithKillPort(activeFrontendPort, 'frontend shutdown cleanup');
   }
+};
+
+const startLocalFrontendServer = async () => {
+  const frontendRoot = app.isPackaged
+    ? getResourcePath('frontend', 'dist')
+    : path.join(__dirname, '..', 'frontend', 'dist');
+
+  frontendServer = await startLocalServer({
+    rootDir: frontendRoot,
+    port: activeFrontendPort,
+    backendPort: BACKEND_PORT,
+    logger,
+  });
+};
+
+const activateLocalFrontendFallback = async (reason) => {
+  if (useLocalFrontendFallback) {
+    return;
+  }
+
+  logger.warn(`Switching to local frontend fallback: ${reason}`);
+  useLocalFrontendFallback = true;
+  await releasePortWithKillPort(activeFrontendPort, 'frontend runtime fallback cleanup');
+  await startLocalFrontendServer();
+};
+
+const prepareBackendPort = async () => {
+  await releasePortWithKillPort(BACKEND_PORT, 'backend startup cleanup');
+  await ensurePortAvailable(BACKEND_PORT, 'le backend');
+};
+
+const releaseBackendPort = async () => {
+  await releasePortWithKillPort(BACKEND_PORT, 'backend shutdown cleanup');
+};
+
+const startBackend = async () => {
+  if (isDevMode) {
+    logger.info(`Development mode detected, using existing backend on port ${BACKEND_PORT}.`);
+    return;
+  }
+
+  await prepareBackendPort();
+  backendController = loadBackendModule();
+  if (typeof backendController.startServer !== 'function') {
+    throw new Error('Backend module does not export startServer().');
+  }
+  await backendController.startServer(BACKEND_PORT);
+  logger.info('Backend started successfully.');
+};
+
+const stopBackend = async () => {
+  if (isDevMode) {
+    return;
+  }
+
+  try {
+    if (backendController?.stopServer) {
+      await backendController.stopServer();
+    }
+  } catch (error) {
+    logger.warn(`Unable to stop backend server: ${error.message}`);
+  }
+
+  await releaseBackendPort();
 };
 
 const resolveMosquittoPath = () => {
@@ -342,6 +477,22 @@ const createMainWindow = async () => {
     },
   });
 
+  mainWindow.webContents.on('did-fail-load', async (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+    if (!isMainFrame || frontendFallbackAttempted || useLocalFrontendFallback) {
+      return;
+    }
+
+    frontendFallbackAttempted = true;
+    logger.warn(`Main window failed to load ${validatedUrl || getFrontendOrigin()} (${errorCode}: ${errorDescription}).`);
+
+    try {
+      await activateLocalFrontendFallback(`${errorCode}: ${errorDescription}`);
+      await mainWindow.loadURL(getFrontendOrigin());
+    } catch (error) {
+      logger.error(`Frontend fallback failed: ${error.message}`);
+    }
+  });
+
   await mainWindow.loadURL(getFrontendOrigin());
   mainWindow.once('ready-to-show', () => {
     splashWindow?.close();
@@ -424,11 +575,9 @@ const shutdown = async () => {
   }
 
   try {
-    if (backendController?.stopServer) {
-      await backendController.stopServer();
-    }
+    await stopBackend();
   } catch (error) {
-    logger.warn(`Unable to stop backend server: ${error.message}`);
+    logger.warn(`Unable to stop backend stack: ${error.message}`);
   }
 
   try {
@@ -452,32 +601,18 @@ const bootstrap = async () => {
   createSplashWindow();
   updateSplashProgress(12, 'Verification des ports');
 
-  await ensurePortAvailable(BACKEND_PORT, 'le backend');
   await selectFrontendPort();
   writeInstanceState();
 
   updateSplashProgress(32, 'Demarrage du backend');
-  backendController = loadBackendModule();
-  if (typeof backendController.startServer !== 'function') {
-    throw new Error('Backend module does not export startServer().');
-  }
-  await backendController.startServer(BACKEND_PORT);
-  logger.info('Backend started successfully.');
+  await startBackend();
 
   updateSplashProgress(54, 'Demarrage du broker MQTT');
   await startMosquitto();
 
   updateSplashProgress(74, isDevMode ? 'Connexion au frontend de developpement' : 'Demarrage du frontend local');
-  if (!isDevMode) {
-    const frontendRoot = app.isPackaged
-      ? getResourcePath('frontend', 'dist')
-      : path.join(__dirname, '..', 'frontend', 'dist');
-    frontendServer = await startLocalServer({
-      rootDir: frontendRoot,
-      port: activeFrontendPort,
-      backendPort: BACKEND_PORT,
-      logger,
-    });
+  if (!isDevMode || useLocalFrontendFallback) {
+    await startLocalFrontendServer();
   }
 
   updateSplashProgress(92, 'Ouverture de l interface');

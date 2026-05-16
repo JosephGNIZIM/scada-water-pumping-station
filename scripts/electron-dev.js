@@ -8,12 +8,15 @@ const electronCommand = isWin ? 'cmd' : 'npx';
 const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
 
 const children = [];
+const baseEnv = { ...process.env };
+
+delete baseEnv.ELECTRON_RUN_AS_NODE;
 
 const spawnProcess = (name, args, env = {}) => {
   const child = spawn(command, isWin ? ['/c', ...args] : args, {
     stdio: ['inherit', 'pipe', 'pipe'],
     windowsHide: false,
-    env: { ...process.env, ...env },
+    env: { ...baseEnv, ...env },
   });
 
   child.stdout.on('data', (data) => process.stdout.write(`[${name}] ${data}`));
@@ -55,15 +58,21 @@ const isPortOccupied = (port) =>
       .listen(port, '127.0.0.1');
   });
 
-const selectFrontendPort = async () => {
-  if (await isPortOccupied(3001)) {
-    try {
-      await killPort(3001, 'tcp');
-      await wait(500);
-    } catch (error) {
-      process.stderr.write(`[frontend] Unable to release port 3001 automatically: ${error.message}\n`);
-    }
+const releasePort = async (port, name) => {
+  if (!(await isPortOccupied(port))) {
+    return;
   }
+
+  try {
+    await killPort(port, 'tcp');
+    await wait(500);
+  } catch (error) {
+    process.stderr.write(`[${name}] Unable to release port ${port} automatically: ${error.message}\n`);
+  }
+};
+
+const selectFrontendPort = async () => {
+  await releasePort(3001, 'frontend');
 
   for (const port of FRONTEND_PORT_CANDIDATES) {
     if (!(await isPortOccupied(port))) {
@@ -87,6 +96,7 @@ process.on('SIGTERM', shutdown);
 
 (async () => {
   const frontendPort = await selectFrontendPort();
+  await releasePort(3000, 'backend');
 
   spawnProcess('backend', ['npm', '--prefix', 'backend', 'run', 'start']);
   spawnProcess('frontend', ['npm', '--prefix', 'frontend', 'run', 'start'], {
@@ -99,10 +109,10 @@ process.on('SIGTERM', shutdown);
 
   const electron = spawn(
     electronCommand,
-    isWin ? ['/c', 'npx', 'electron', 'electron/main.js'] : ['electron', 'electron/main.js'],
+    isWin ? ['/c', 'npx', 'electron', '.'] : ['electron', '.'],
     {
       stdio: 'inherit',
-      env: { ...process.env, ELECTRON_DEV: '1', FRONTEND_PORT: `${frontendPort}` },
+      env: { ...baseEnv, ELECTRON_DEV: '1', FRONTEND_PORT: `${frontendPort}` },
       windowsHide: false,
     },
   );
