@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
@@ -8,12 +8,26 @@ const killPort = require('kill-port');
 const { startLocalServer } = require('./local-server');
 
 const APP_NAME = 'SCADA Water Station';
+
+const isDevMode = process.env.ELECTRON_DEV === '1';
+const isCleanDesktop = process.env.ELECTRON_CLEAN === '1';
+const customUserDataPath = process.env.ELECTRON_USER_DATA_PATH;
+
+if (customUserDataPath) {
+  app.setPath('userData', customUserDataPath);
+} else if (isDevMode) {
+  const devUserDataPath = path.join(app.getPath('appData'), 'scada-water-pumping-station-workspace-dev');
+  app.setPath('userData', devUserDataPath);
+} else if (isCleanDesktop) {
+  const cleanUserDataPath = path.join(app.getPath('appData'), 'scada-water-pumping-station-workspace-clean');
+  app.setPath('userData', cleanUserDataPath);
+}
+
 const APP_VERSION = '1.0.0';
 const BACKEND_PORT = Number.parseInt(process.env.BACKEND_PORT || '3000', 10);
 const DEFAULT_FRONTEND_PORT = 3001;
 const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
 const MQTT_PORT = 1883;
-const isDevMode = process.env.ELECTRON_DEV === '1';
 
 let mainWindow = null;
 let splashWindow = null;
@@ -501,7 +515,11 @@ const createSplashWindow = () => {
   });
 
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
-  splashWindow.once('ready-to-show', () => splashWindow?.show());
+  splashWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.show();
+    }
+  });
 };
 
 const createMainWindow = async () => {
@@ -517,6 +535,7 @@ const createMainWindow = async () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      experimentalFeatures: true,
     },
   });
 
@@ -530,16 +549,21 @@ const createMainWindow = async () => {
 
     try {
       await activateLocalFrontendFallback(`${errorCode}: ${errorDescription}`);
-      await mainWindow.loadURL(getFrontendOrigin());
+      await mainWindow.loadURL(`${getFrontendOrigin()}/index.html`);
     } catch (error) {
       logger.error(`Frontend fallback failed: ${error.message}`);
     }
   });
 
-  await mainWindow.loadURL(getFrontendOrigin());
+  await mainWindow.loadURL(`${getFrontendOrigin()}/index.html`);
+
   mainWindow.once('ready-to-show', () => {
-    splashWindow?.close();
-    mainWindow?.show();
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
 };
 
@@ -646,6 +670,7 @@ const bootstrap = async () => {
   updateSplashProgress(12, 'Verification des ports');
 
   await selectFrontendPort();
+
   writeInstanceState();
 
   updateSplashProgress(32, 'Demarrage du backend');
@@ -656,7 +681,7 @@ const bootstrap = async () => {
   await startMosquitto();
 
   updateSplashProgress(74, isDevMode ? 'Connexion au frontend de developpement' : 'Demarrage du frontend local');
-  if (!isDevMode || useLocalFrontendFallback) {
+  if (!isDevMode) {
     await startLocalFrontendServer();
   }
 

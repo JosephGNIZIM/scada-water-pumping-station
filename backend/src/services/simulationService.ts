@@ -1,5 +1,7 @@
+import mqtt, { MqttClient } from 'mqtt';
 import { Alarm } from '../models/event';
 import { Pump } from '../models/pump';
+import { getAppSetting } from '../utils/securityDb';
 import {
     acknowledgeAlarmById,
     clearSimulationHistory,
@@ -112,6 +114,10 @@ interface SimulationReportPayload {
 
 export type { FaultType, SimulationMode, SimulationReportPayload, SimulationRunState, SimulationState };
 
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
+const MQTT_TOPIC = process.env.MQTT_TOPIC || 'station/telemetry';
+const MQTT_RECONNECT_INTERVAL_MS = 5000;
+const REAL_TELEMETRY_TIMEOUT_MS = 30000;
 const TANK_CAPACITY_L = 2000;
 const LOOP_INTERVAL_MS = 250;
 const EVAPORATION_RATIO_PER_SECOND = 0.0001;
@@ -141,9 +147,150 @@ class SimulationEngine {
     private historyAccumulatorSeconds = 0;
     private scenarioActions: Array<{ at: number; run: () => void }> = [];
     private lastPersistedReportSignature = '';
+    private mqttClient: MqttClient | null = null;
+    private mqttBrokerUrl: string = MQTT_BROKER_URL;
+    private mqttTopic: string = MQTT_TOPIC;
+    private lastTelemetryAt = 0;
+    private telemetryMonitor: NodeJS.Timeout | null = null;
 
-    public async initialize(): Promise<void> {
-        await this.syncOutputs();
+    private async loadMqttConfig(): Promise<void> {
+        const systemSettings = await getAppSetting('system', {
+            mqtt: {
+                enabled: true,
+                brokerUrl: MQTT_BROKER_URL,
+                topic: MQTT_TOPIC,
+            },
+        });
+
+        if (systemSettings?.mqtt?.brokerUrl) {
+            this.mqttBrokerUrl = String(systemSettings.mqtt.brokerUrl);
+        }
+
+        if (systemSettings?.mqtt?.topic) {
+            this.mqttTopic = String(systemSettings.mqtt.topic);
+        }
+    }
+
+    private async initializeRealEquipment(): Promise<void> {
+        try {
+            this.state.communicationOk = false;
+
+            if (this.mqttClient) {
+                this.mqttClient.end(true);
+                this.mqttClient = null;
+            }
+
+            await this.loadMqttConfig();
+
+            this.mqttClient = mqtt.connect(this.mqttBrokerUrl, {
+                reconnectPeriod: MQTT_RECONNECT_INTERVAL_MS,
+                connectTimeout: 5000,
+                keepalive: 30,
+                clientId: `scada-backend-${Math.random().toString(16).slice(2)}`,
+            });
+
+            this.mqttClient.on('connect', () => {
+                if (!this.mqttClient) {
+                    return;
+                }
+
+                this.state.communicationOk = true;
+                this.mqttClient.subscribe(this.mqttTopic, { qos: 0 }, (err) => {
+                    if (err) {
+                        void this.log('warning', `Impossible de s abonner au topic MQTT ${this.mqttTopic}: ${err.message}`);
+                        return;
+                    }
+                    void this.log('normal', `Connecte au broker MQTT et abonne au topic ${this.mqttTopic}`);
+                });
+            });
+
+            this.mqttClient.on('message', async (topic, payload) => {
+                await this.handleRealTelemetry(topic, payload);
+            });
+
+            this.mqttClient.on('error', async (error) => {
+                this.state.communicationOk = false;
+                await this.log('warning', `Erreur MQTT: ${error.message}`);
+            });
+
+            this.mqttClient.on('close', async () => {
+                this.state.communicationOk = false;
+                await this.log('warning', 'Connection MQTT fermee');
+            });
+        } catch (error) {
+            await this.log('warning', `Impossible de demarrer le client MQTT: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    private startTelemetryMonitor(): void {
+        if (this.telemetryMonitor) {
+            return;
+        }
+
+        this.telemetryMonitor = setInterval(async () => {
+            if (this.state.mode !== 'real') {
+                return;
+            }
+
+            const now = Date.now();
+            if (this.lastTelemetryAt > 0 && now - this.lastTelemetryAt > REAL_TELEMETRY_TIMEOUT_MS) {
+                this.state.communicationOk = false;
+                await this.log('warning', 'Aucune trame MQTT ESP32 recue depuis plus de 30 secondes');
+            }
+        }, REAL_TELEMETRY_TIMEOUT_MS);
+    }
+
+    private applyRealTelemetry(data: Record<string, unknown>): void {
+        const getNumberValue = (value: unknown, fallback: number): number => {
+            const candidate = Number(value);
+            return Number.isFinite(candidate) ? candidate : fallback;
+        };
+
+        this.state.tank1Level = clamp(getNumberValue(data.tank1Level, this.state.tank1Level), 0, 100);
+        this.state.tank2Level = clamp(getNumberValue(data.tank2Level, this.state.tank2Level), 0, 100);
+        this.state.measuredPressure = round(getNumberValue(data.pressure, this.state.measuredPressure), 2);
+        this.state.measuredFlow = round(getNumberValue(data.flow, this.state.measuredFlow), 2);
+        this.state.estimatedEnergyKw = round(getNumberValue(data.energy, this.state.estimatedEnergyKw), 2);
+        this.state.treatedVolumeLiters = getNumberValue(data.treatedVolumeLiters, this.state.treatedVolumeLiters);
+
+        if (typeof data.pump1Status === 'string') {
+            this.state.pumps[0].status = data.pump1Status as Pump['status'];
+        }
+        if (typeof data.pump2Status === 'string') {
+            this.state.pumps[1].status = data.pump2Status as Pump['status'];
+        }
+
+        if (typeof data.pump1Running === 'boolean') {
+            this.state.pumps[0].running = data.pump1Running;
+        }
+        if (typeof data.pump2Running === 'boolean') {
+            this.state.pumps[1].running = data.pump2Running;
+        }
+
+        if (typeof data.pump1Temperature !== 'undefined') {
+            this.state.pumps[0].temperature = round(getNumberValue(data.pump1Temperature, this.state.pumps[0].temperature), 2);
+        }
+        if (typeof data.pump2Temperature !== 'undefined') {
+            this.state.pumps[1].temperature = round(getNumberValue(data.pump2Temperature, this.state.pumps[1].temperature), 2);
+        }
+
+        this.state.communicationOk = true;
+        this.lastTelemetryAt = Date.now();
+    }
+
+    private async handleRealTelemetry(topic: string, payload: Buffer): Promise<void> {
+        try {
+            const payloadText = payload.toString('utf8');
+            const data = JSON.parse(payloadText) as Record<string, unknown>;
+
+            this.applyRealTelemetry(data);
+
+            if (this.state.mode === 'real') {
+                await this.syncOutputs();
+            }
+        } catch (error) {
+            await this.log('warning', `Erreur de parsing MQTT: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     public getState(): SimulationState {
@@ -198,8 +345,38 @@ class SimulationEngine {
         this.state.runState = 'idle';
         this.state.speed = 1;
         await this.log('warning', 'Retour au mode ESP32 reel');
+
+        await this.loadMqttConfig();
+
+        if (!this.mqttClient || !this.mqttClient.connected) {
+            await this.initializeRealEquipment();
+        }
+
+        if (this.mqttClient && this.mqttClient.connected) {
+            this.state.communicationOk = true;
+            await this.log('normal', `Client MQTT connecte sur ${this.mqttBrokerUrl}, attente des donnees ESP32.`);
+        } else {
+            this.state.communicationOk = false;
+            await this.log('warning', `Client MQTT non connecte sur ${this.mqttBrokerUrl}. Verifiez la configuration MQTT et le broker.`);
+        }
+
         await this.syncOutputs();
         return this.getState();
+    }
+
+    public async receiveSerialTelemetry(data: Record<string, unknown>): Promise<SimulationState> {
+        this.applyRealTelemetry(data);
+        this.state.communicationOk = true;
+        this.lastTelemetryAt = Date.now();
+        await this.log('normal', 'Telemetrie ESP32 recue via port serie');
+        await this.syncOutputs();
+        return this.getState();
+    }
+
+    public async initialize(): Promise<void> {
+        await this.initializeRealEquipment();
+        this.startTelemetryMonitor();
+        await this.syncOutputs();
     }
 
     public async updateSettings(nextSettings: Partial<SimulationSettings> & { speed?: number }): Promise<SimulationState> {
@@ -713,6 +890,7 @@ export const startSimulation = async (speed?: number): Promise<SimulationState> 
 export const pauseSimulation = async (): Promise<SimulationState> => engine.pause();
 export const resetSimulation = async (): Promise<SimulationState> => engine.reset();
 export const connectRealEquipment = async (): Promise<SimulationState> => engine.connectReal();
+export const receiveSerialTelemetry = async (data: Record<string, unknown>): Promise<SimulationState> => engine.receiveSerialTelemetry(data);
 export const updateSimulationSettings = async (settings: Partial<SimulationSettings> & { speed?: number }): Promise<SimulationState> => engine.updateSettings(settings);
 export const injectSimulationFault = async (type: FaultType): Promise<SimulationState> => engine.injectFault(type);
 export const loadSimulationScenario = async (id: string): Promise<SimulationState> => engine.loadScenario(id);

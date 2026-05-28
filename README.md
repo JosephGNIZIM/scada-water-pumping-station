@@ -71,7 +71,10 @@ scada-water-pumping-station
    ```
 
 ## Usage
-- Access the application in your web browser at `http://localhost:3000`.
+- To run the desktop application directly in development mode, use `npm run electron:start` or `npm run desktop`.
+- To run a clean desktop version that uses built static assets instead of the Vite development server, use `npm run desktop:clean`.
+- For browser-only development, use `npm run dev` and open `http://localhost:3001`.
+- The desktop app starts the embedded backend, the frontend UI and an optional local MQTT broker.
 - Use the dashboard to monitor pump status and sensor readings.
 - Control pumps and manage alarms through the interface.
 

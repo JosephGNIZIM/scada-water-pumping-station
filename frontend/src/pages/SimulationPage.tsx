@@ -7,7 +7,9 @@ import {
     injectSimulationFault,
     loadSimulationScenario,
     pauseSimulation,
+    postSerialTelemetry,
     resetSimulation,
+    SimulationState,
     startSimulation,
     updateSimulationSettings,
 } from '../services/api';
@@ -39,6 +41,12 @@ const SimulationPage: React.FC = () => {
         initialTank2Level: 50,
         networkPressure: 3.8,
     });
+    const [serialPorts, setSerialPorts] = useState<any[]>([]);
+    const [serialPortLabel, setSerialPortLabel] = useState<string>('Aucun port');
+    const [serialConnected, setSerialConnected] = useState(false);
+    const [serialStatus, setSerialStatus] = useState<string>('Détecter un port USB ESP32 pour récupérer les données réelles.');
+    const [serialError, setSerialError] = useState<string | null>(null);
+    const [realModeReady, setRealModeReady] = useState(false);
 
     const canOperateSimulation = hasRole(['ingenieur', 'technicien']);
     const canEditSimulation = canOperateSimulation;
@@ -69,6 +77,105 @@ const SimulationPage: React.FC = () => {
         await action();
         syncEverything();
     };
+
+    const handleConnectReal = async () => {
+        try {
+            setSerialError(null);
+            await handleAction(() => connectRealEquipment());
+            setRealModeReady(true);
+            setSerialStatus('Demande de connexion ESP32 réel envoyée.');
+        } catch (error: any) {
+            setSerialError(error?.message ?? 'Impossible de passer en mode ESP32 réel.');
+            setSerialStatus('Erreur de connexion ESP32 réel.');
+        }
+    };
+
+    const serialApi = (navigator as unknown as { serial?: any }).serial;
+
+    const scanSerialPorts = async () => {
+        if (!serialApi?.getPorts) {
+            setSerialStatus('Web Serial non supporté dans ce navigateur ou cette version d Electron.');
+            return;
+        }
+
+        try {
+            const ports = await serialApi.getPorts();
+            setSerialPorts(ports);
+            setSerialStatus(ports.length > 0 ? `${ports.length} port(s) détecté(s)` : 'Aucun port ESP32 accessible, utilisez le bouton de sélection.');
+        } catch (error: any) {
+            setSerialError(error?.message ?? 'Erreur lors de la recherche des ports série.');
+            setSerialStatus('Erreur de détection des ports USB ESP32.');
+        }
+    };
+
+    const requestSerialPort = async () => {
+        if (!serialApi?.requestPort) {
+            setSerialError('Web Serial non supporté dans ce navigateur ou cette version d Electron.');
+            return;
+        }
+
+        try {
+            const port = await serialApi.requestPort();
+            setSerialPorts((current) => [...current, port]);
+            setSerialPortLabel(port.getInfo ? `USB ${port.getInfo().usbVendorId ?? ''}:${port.getInfo().usbProductId ?? ''}` : 'Port ESP32');
+            setSerialStatus('Port ESP32 sélectionné. Ouverture en cours...');
+            await port.open({ baudRate: 115200 });
+            setSerialConnected(true);
+            setSerialStatus('Port ESP32 connecté. Lecture des données...');
+            readSerialPort(port);
+        } catch (error: any) {
+            setSerialError(error?.message ?? 'Impossible d ouvrir le port série.');
+            setSerialStatus('Connexion série échouée.');
+        }
+    };
+
+    const readSerialPort = async (port: any) => {
+        if (!port.readable) {
+            setSerialError('Port série non lisible.');
+            return;
+        }
+
+        const reader = port.readable.getReader();
+        let buffer = '';
+
+        try {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                buffer += new TextDecoder().decode(value);
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() ?? '';
+
+                for (const line of lines) {
+                    if (!line.trim()) {
+                        continue;
+                    }
+
+                    try {
+                        const payload = JSON.parse(line.trim());
+                        await postSerialTelemetry(payload);
+                        setRealModeReady(true);
+                        setSerialStatus('Données ESP32 reçues et synchronisées.');
+                    } catch (parseError) {
+                        console.warn('Ligne série ignorée:', line);
+                    }
+                }
+            }
+        } catch (error: any) {
+            setSerialError(error?.message ?? 'Erreur pendant la lecture du flux série.');
+            setSerialStatus('Lecture série interrompue.');
+        } finally {
+            reader.releaseLock();
+            setSerialConnected(false);
+            setSerialStatus('Connexion série fermée.');
+        }
+    };
+
+    useEffect(() => {
+        scanSerialPorts();
+    }, []);
 
     const chartSeries = useMemo(() => {
         const history = simulationState?.history ?? [];
@@ -102,7 +209,7 @@ const SimulationPage: React.FC = () => {
             <section className="hero-card simulation-hero">
                 <div>
                     <p className="eyebrow">Simulation</p>
-                    <h1>{tr('Station de pompage virtuelle complete', 'Complete virtual pumping station')}</h1>
+                    <h1>{tr('Station de pompage AEP avec mode ESP32 reel', 'AEP pumping station with real ESP32 mode')}</h1>
                     <p className="hero-copy">
                         {tr('Mode bac a bac, actionneurs progressifs, bruit capteurs, pannes injectables et rapport de fin de simulation.', 'Tank-to-tank mode, progressive actuators, sensor noise, injectable faults and end-of-simulation report.')}
                     </p>
@@ -114,13 +221,52 @@ const SimulationPage: React.FC = () => {
                     <span className={`comm-badge ${simulationState?.communicationOk ? 'comm-badge--ok' : 'comm-badge--down'}`}>
                         {simulationState?.communicationOk ? tr('MQTT CONNECTE', 'MQTT CONNECTED') : tr('MQTT COUPE', 'MQTT DISCONNECTED')}
                     </span>
-                    <button className="btn btn-secondary" onClick={() => handleAction(() => connectRealEquipment())} disabled={!canEditSimulation} title={canEditSimulation ? '' : 'Acces reserve aux Ingenieurs et Techniciens'}>
+                    <button className="btn btn-secondary" onClick={handleConnectReal} disabled={!canEditSimulation} title={canEditSimulation ? '' : 'Acces reserve aux Ingenieurs et Techniciens'}>
                         {tr('Connecter ESP32 reel', 'Connect real ESP32')}
                     </button>
                     <a className={`btn ${canExportPdf ? 'btn-primary' : 'btn-secondary btn-disabled'}`} href={canExportPdf ? '/api/simulation/report/pdf' : '#'} target="_blank" rel="noreferrer" onClick={(event) => !canExportPdf && event.preventDefault()} title={canExportPdf ? '' : 'Acces reserve aux Ingenieurs et Techniciens'}>
                         Export PDF
                     </a>
                 </div>
+            </section>
+
+            <section className="panel glow-ok">
+                <div className="panel-heading">
+                    <div>
+                        <p className="eyebrow">ESP32</p>
+                        <h2>{tr('Connectivité réel', 'Real connectivity')}</h2>
+                    </div>
+                </div>
+                <div className="field-row">
+                    <label>{tr('Statut lecture série', 'Serial read status')}</label>
+                    <p>{serialStatus}</p>
+                </div>
+                {serialError && (
+                    <div className="field-row">
+                        <p className="muted">{serialError}</p>
+                    </div>
+                )}
+                <div className="action-row">
+                    <button className="btn btn-secondary" onClick={scanSerialPorts} disabled={!serialApi?.getPorts}>
+                        {tr('Scanner les ports USB', 'Scan USB ports')}
+                    </button>
+                    <button className="btn btn-primary" onClick={requestSerialPort} disabled={!serialApi?.requestPort}>
+                        {tr('Sélectionner un port ESP32', 'Select ESP32 port')}
+                    </button>
+                </div>
+                <div className="field-row">
+                    <label>{tr('Ports détectés', 'Detected ports')}</label>
+                    <p>{serialPorts.length} {tr('ports trouvés', 'ports found')}</p>
+                </div>
+                <div className="field-row">
+                    <label>{tr('Port sélectionné', 'Selected port')}</label>
+                    <p>{serialPortLabel}</p>
+                </div>
+                {realModeReady && (
+                    <div className="field-row">
+                        <p className="glow-ok">{tr('Mode réel activé', 'Real mode enabled')}</p>
+                    </div>
+                )}
             </section>
 
             <section className="simulation-grid">

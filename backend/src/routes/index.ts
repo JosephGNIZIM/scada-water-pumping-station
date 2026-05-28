@@ -45,5 +45,6 @@ router.post('/simulation/settings', requireCsrf, requireRole(['ingenieur', 'tech
 router.post('/simulation/fault', requireCsrf, requireRole(['ingenieur', 'technicien']), simulationController.injectFault);
 router.post('/simulation/scenarios/:id', requireCsrf, requireRole(['ingenieur', 'technicien']), simulationController.loadScenario);
 router.post('/simulation/connect-real', requireCsrf, requireRole(['ingenieur', 'technicien']), simulationController.connectReal);
+router.post('/simulation/serial-telemetry', requireCsrf, requireRole(['ingenieur', 'technicien']), simulationController.receiveSerialTelemetry);
 
 export default router;

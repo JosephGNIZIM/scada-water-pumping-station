@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Server } from 'http';
@@ -5,6 +6,8 @@ import { initializeDatabase, testConnection } from './utils/db';
 import { initializeSecurityDatabase } from './utils/securityDb';
 import routes from './routes/index';
 import { initializeSimulation } from './services/simulationService';
+
+dotenv.config();
 
 const app = express();
 

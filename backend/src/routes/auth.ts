@@ -1,4 +1,5 @@
 import express from 'express';
+import mqtt from 'mqtt';
 import rateLimit from 'express-rate-limit';
 import { ROLES } from '../auth/types';
 import { authenticate, requireCsrf, requireRole } from '../middleware/auth';
@@ -152,11 +153,64 @@ router.get('/audit-logs', authenticate, requireRole(['ingenieur']), async (_req,
 
 router.get('/settings', authenticate, requireRole(['ingenieur', 'technicien']), async (_req, res) => {
     const settings = await getAppSetting('system', {
-        mqtt: { enabled: true, brokerUrl: 'mqtt://127.0.0.1:1883' },
+        mqtt: { enabled: true, brokerUrl: 'mqtt://127.0.0.1:1883', topic: 'station/telemetry' },
         websocket: { enabled: true, url: 'ws://127.0.0.1:3000' },
     });
 
     res.json(settings);
+});
+
+router.post('/settings/test-mqtt', authenticate, requireCsrf, requireRole(['ingenieur']), async (req, res) => {
+    const brokerUrl = String(req.body?.brokerUrl ?? '').trim();
+    const topic = String(req.body?.topic ?? 'station/telemetry').trim();
+
+    if (!brokerUrl) {
+        res.status(400).json({ success: false, message: 'brokerUrl is required' });
+        return;
+    }
+
+    const client = mqtt.connect(brokerUrl, {
+        connectTimeout: 5000,
+        reconnectPeriod: 0,
+        clean: true,
+        clientId: `scada-test-${Math.random().toString(16).slice(2)}`,
+    });
+
+    let settled = false;
+    const cleanup = () => {
+        if (client.connected) {
+            client.end(true);
+        }
+    };
+
+    const respond = (success: boolean, message: string, status = 200) => {
+        if (settled) {
+            return;
+        }
+        settled = true;
+        cleanup();
+        res.status(status).json({ success, message });
+    };
+
+    const timer = setTimeout(() => {
+        respond(false, 'Timeout while contacting MQTT broker', 408);
+    }, 5000);
+
+    client.on('connect', () => {
+        clearTimeout(timer);
+        client.subscribe(topic, { qos: 0 }, (err) => {
+            if (err) {
+                respond(false, `Connecté au broker mais impossible de s'abonner au topic ${topic}: ${err.message}`, 502);
+            } else {
+                respond(true, `Connecté au broker MQTT ${brokerUrl} et abonné au topic ${topic}`);
+            }
+        });
+    });
+
+    client.on('error', (error) => {
+        clearTimeout(timer);
+        respond(false, `Erreur MQTT: ${error.message}`, 502);
+    });
 });
 
 router.put('/settings', authenticate, requireCsrf, requireRole(['ingenieur']), async (req: AuthRequest, res) => {

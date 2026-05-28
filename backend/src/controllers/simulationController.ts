@@ -8,6 +8,7 @@ import {
     injectSimulationFault,
     loadSimulationScenario,
     pauseSimulation,
+    receiveSerialTelemetry,
     resetSimulation,
     startSimulation,
     updateSimulationSettings,
@@ -140,6 +141,22 @@ export class SimulationController {
             entityType: 'simulation',
             entityId: 'equipment',
             ip: getClientIp(req),
+        });
+        res.json(state);
+    }
+
+    public async receiveSerialTelemetry(req: AuthRequest, res: Response) {
+        const telemetry = req.body ?? {};
+        const state = await receiveSerialTelemetry(telemetry);
+        await createAuditLog({
+            userId: req.auth?.id,
+            username: req.auth?.username,
+            role: req.auth?.role,
+            action: 'simulation.receive-serial-telemetry',
+            entityType: 'simulation',
+            entityId: 'telemetry',
+            ip: getClientIp(req),
+            details: JSON.stringify(telemetry),
         });
         res.json(state);
     }

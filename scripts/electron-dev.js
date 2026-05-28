@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const net = require('net');
+const path = require('path');
 const killPort = require('kill-port');
 
 const isWin = process.platform === 'win32';
@@ -7,6 +8,9 @@ const command = isWin ? 'cmd' : 'npm';
 const electronCommand = isWin ? 'cmd' : 'npx';
 const FRONTEND_PORT_CANDIDATES = [3001, 3002, 3003];
 const BACKEND_PORT_CANDIDATES = [3000, 3004, 3005, 3006];
+
+const appDataPath = process.env.APPDATA || process.env.LOCALAPPDATA || path.join(process.env.HOME || process.cwd(), 'AppData', 'Roaming');
+const electronUserDataPath = path.join(appDataPath, 'scada-water-pumping-station-workspace-dev', `session-${Date.now()}-${process.pid}`);
 
 const children = [];
 const baseEnv = { ...process.env };
@@ -22,6 +26,13 @@ const spawnProcess = (name, args, env = {}) => {
 
   child.stdout.on('data', (data) => process.stdout.write(`[${name}] ${data}`));
   child.stderr.on('data', (data) => process.stderr.write(`[${name}] ${data}`));
+  child.on('exit', (code) => {
+    if (code !== 0) {
+      process.stderr.write(`[${name}] exited with code ${code}\n`);
+      shutdown();
+      process.exit(code ?? 1);
+    }
+  });
   children.push(child);
   return child;
 };
@@ -56,7 +67,7 @@ const isPortOccupied = (port) =>
     const tester = net.createServer()
       .once('error', () => resolve(true))
       .once('listening', () => tester.once('close', () => resolve(false)).close())
-      .listen(port, '127.0.0.1');
+      .listen(port);
   });
 
 const releasePort = async (port, name) => {
@@ -118,7 +129,7 @@ process.on('SIGTERM', shutdown);
 
   spawnProcess(
     'frontend',
-    ['npm', '--prefix', 'frontend', 'run', 'start', '--', '--port', `${frontendPort}`],
+    ['npm', '--prefix', 'frontend', 'run', 'start', '--', '--port', `${frontendPort}`, '--strictPort', '--host', '127.0.0.1'],
     {
       ELECTRON_DEV: '1',
       FRONTEND_PORT: `${frontendPort}`,
@@ -135,7 +146,13 @@ process.on('SIGTERM', shutdown);
     isWin ? ['/c', 'npx', 'electron', '.'] : ['electron', '.'],
     {
       stdio: 'inherit',
-      env: { ...baseEnv, ELECTRON_DEV: '1', FRONTEND_PORT: `${frontendPort}`, BACKEND_PORT: `${backendPort}` },
+      env: {
+        ...baseEnv,
+        ELECTRON_DEV: '1',
+        ELECTRON_USER_DATA_PATH: electronUserDataPath,
+        FRONTEND_PORT: `${frontendPort}`,
+        BACKEND_PORT: `${backendPort}`,
+      },
       windowsHide: false,
     },
   );

@@ -143,13 +143,6 @@ export default class SceneAEP {
         cancelAnimationFrame(this.frame);
         this.controls.dispose();
         this.renderer.dispose();
-    }
-}
-
-    dispose() {
-        cancelAnimationFrame(this.frame);
-        this.controls.dispose();
-        this.renderer.dispose();
         this.scene.traverse((object) => {
             if (object.geometry) object.geometry.dispose();
             if (object.material) {

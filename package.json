@@ -8,6 +8,9 @@
   "scripts": {
     "install:all": "npm --prefix backend install && npm --prefix frontend install",
     "dev": "node scripts/dev.js",
+    "dev:desktop": "npm run electron:start",
+    "desktop": "npm run electron:start",
+    "desktop:clean": "npm run build && npx electron .",
     "dev:backend": "npm --prefix backend run start",
     "dev:frontend": "npm --prefix frontend run start",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",

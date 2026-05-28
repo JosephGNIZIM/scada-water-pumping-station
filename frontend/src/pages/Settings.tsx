@@ -10,6 +10,7 @@ import {
     listUsers,
     ManagedUser,
     resetUserPassword,
+    testMqttBroker,
     updateSystemSettings,
     updateUser,
     UserRole,
@@ -61,13 +62,20 @@ const Settings: React.FC = () => {
         setThresholds((current) => ({ ...current, [key]: Number(value) }));
     };
 
-    const testConnection = () => {
+    const testConnection = async () => {
         setTesting(true);
         setTestResult(null);
-        window.setTimeout(() => {
+
+        try {
+            const result = await testMqttBroker(mqttConfig.broker, mqttConfig.topic);
+            setTestResult(result.message || tr('Broker joignable, test d abonnement reussi.', 'Broker reachable, subscription test passed.'));
+        } catch (error: any) {
+            setTestResult(typeof error?.response?.data?.message === 'string'
+                ? error.response.data.message
+                : error?.message || tr('Echec de la connexion MQTT.', 'MQTT connection failed.'));
+        } finally {
             setTesting(false);
-            setTestResult(tr('Broker joignable, test d abonnement reussi.', 'Broker reachable, subscription test passed.'));
-        }, 900);
+        }
     };
 
     const saveSettings = async () => {

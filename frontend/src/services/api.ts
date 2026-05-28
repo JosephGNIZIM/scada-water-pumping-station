@@ -158,8 +158,9 @@ export interface SimulationReport {
     summarySeries: Array<{ label: string; values: number[]; color: string }>;
 }
 
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
 const api = axios.create({
-    baseURL: '/api',
+    baseURL: isFileProtocol ? 'http://127.0.0.1:3000/api' : '/api',
     withCredentials: true,
 });
 
@@ -255,8 +256,18 @@ export const getSystemSettings = async () => {
     return response.data;
 };
 
+export const testMqttBroker = async (brokerUrl: string, topic?: string) => {
+    const response = await api.post<{ success: boolean; message: string }>('/auth/settings/test-mqtt', { brokerUrl, topic });
+    return response.data;
+};
+
 export const updateSystemSettings = async (payload: unknown) => {
     await api.put('/auth/settings', payload);
+};
+
+export const postSerialTelemetry = async (payload: unknown) => {
+    const response = await api.post<SimulationState>('/simulation/serial-telemetry', payload);
+    return response.data;
 };
 
 export const getPumpStatus = async () => {
