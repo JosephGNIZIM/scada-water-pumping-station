@@ -156,6 +156,25 @@ export const initializeDatabase = async (): Promise<void> => {
         )
     `);
 
+    // Measurements table for historical data
+    await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS measurements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            pressure REAL NOT NULL,
+            flow_rate REAL NOT NULL,
+            tank_level REAL NOT NULL,
+            pump1_status INTEGER NOT NULL DEFAULT 0,
+            pump2_status INTEGER NOT NULL DEFAULT 0
+        )
+    `);
+
+    // Create index on timestamp for fast range queries
+    await sequelize.query(`
+        CREATE INDEX IF NOT EXISTS idx_measurements_timestamp 
+        ON measurements(timestamp)
+    `);
+
     const pumpCount = await sequelize.query<{ count: number }>(
         'SELECT COUNT(*) as count FROM pumps',
         { type: QueryTypes.SELECT },
@@ -652,3 +671,264 @@ export const getLatestSimulationReport = async (): Promise<{
 };
 
 export { sequelize };
+
+// Measurement functions for historical data
+interface MeasurementRow {
+    id: number;
+    timestamp: string;
+    pressure: number;
+    flow_rate: number;
+    tank_level: number;
+    pump1_status: number;
+    pump2_status: number;
+}
+
+const toMeasurement = (row: MeasurementRow) => ({
+    id: Number(row.id),
+    timestamp: new Date(row.timestamp),
+    pressure: Number(row.pressure),
+    flow_rate: Number(row.flow_rate),
+    tank_level: Number(row.tank_level),
+    pump1_status: Boolean(row.pump1_status),
+    pump2_status: Boolean(row.pump2_status),
+});
+
+export const insertMeasurement = async (data: {
+    pressure: number;
+    flow_rate: number;
+    tank_level: number;
+    pump1_status: boolean;
+    pump2_status: boolean;
+}): Promise<void> => {
+    const timestamp = new Date().toISOString();
+    await sequelize.query(
+        `
+        INSERT INTO measurements (timestamp, pressure, flow_rate, tank_level, pump1_status, pump2_status)
+        VALUES (:timestamp, :pressure, :flow_rate, :tank_level, :pump1_status, :pump2_status)
+        `,
+        {
+            replacements: {
+                timestamp,
+                pressure: data.pressure,
+                flow_rate: data.flow_rate,
+                tank_level: data.tank_level,
+                pump1_status: data.pump1_status ? 1 : 0,
+                pump2_status: data.pump2_status ? 1 : 0,
+            },
+        }
+    );
+};
+
+export const getMeasurementRange = async (
+    from: Date,
+    to: Date,
+    resolution: number = 200
+): Promise<{ data: ReturnType<typeof toMeasurement>[]; count: number }> => {
+    // Get total count first
+    const countResult = await sequelize.query<{ count: number }>(
+        `
+        SELECT COUNT(*) as count FROM measurements
+        WHERE timestamp BETWEEN :from AND :to
+        `,
+        {
+            replacements: {
+                from: from.toISOString(),
+                to: to.toISOString(),
+            },
+            type: QueryTypes.SELECT,
+        }
+    );
+
+    const totalCount = Number(countResult[0]?.count ?? 0);
+
+    if (totalCount === 0) {
+        return { data: [], count: 0 };
+    }
+
+    // If total count <= resolution, return all points
+    if (totalCount <= resolution) {
+        const rows = await sequelize.query<MeasurementRow>(
+            `
+            SELECT id, timestamp, pressure, flow_rate, tank_level, pump1_status, pump2_status
+            FROM measurements
+            WHERE timestamp BETWEEN :from AND :to
+            ORDER BY timestamp ASC
+            `,
+            {
+                replacements: {
+                    from: from.toISOString(),
+                    to: to.toISOString(),
+                },
+                type: QueryTypes.SELECT,
+            }
+        );
+
+        return {
+            data: rows.map(toMeasurement),
+            count: totalCount,
+        };
+    }
+
+    // Downsample: group by bins and take average
+    const binSize = Math.ceil(totalCount / resolution);
+    const rows = await sequelize.query<{
+        id: number;
+        timestamp: string;
+        pressure: number;
+        flow_rate: number;
+        tank_level: number;
+        pump1_status: number;
+        pump2_status: number;
+    }>(
+        `
+        SELECT
+            id,
+            timestamp,
+            pressure,
+            flow_rate,
+            tank_level,
+            pump1_status,
+            pump2_status
+        FROM measurements
+        WHERE timestamp BETWEEN :from AND :to
+        ORDER BY timestamp ASC
+        `,
+        {
+            replacements: {
+                from: from.toISOString(),
+                to: to.toISOString(),
+            },
+            type: QueryTypes.SELECT,
+        }
+    );
+
+    // Group by bins and average
+    const downsampled: typeof rows = [];
+    for (let i = 0; i < rows.length; i += binSize) {
+        const bin = rows.slice(i, i + binSize);
+        if (bin.length > 0) {
+            const avg = {
+                id: bin[Math.floor(bin.length / 2)].id,
+                timestamp: bin[0].timestamp,
+                pressure:
+                    bin.reduce((sum, r) => sum + r.pressure, 0) / bin.length,
+                flow_rate:
+                    bin.reduce((sum, r) => sum + r.flow_rate, 0) / bin.length,
+                tank_level:
+                    bin.reduce((sum, r) => sum + r.tank_level, 0) / bin.length,
+                pump1_status: bin.some((r) => Boolean(r.pump1_status)) ? 1 : 0,
+                pump2_status: bin.some((r) => Boolean(r.pump2_status)) ? 1 : 0,
+            };
+            downsampled.push(avg);
+        }
+    }
+
+    return {
+        data: downsampled.map(toMeasurement),
+        count: totalCount,
+    };
+};
+
+export const getLatestMeasurement = async (): Promise<ReturnType<
+    typeof toMeasurement
+> | null> => {
+    const rows = await sequelize.query<MeasurementRow>(
+        `
+        SELECT id, timestamp, pressure, flow_rate, tank_level, pump1_status, pump2_status
+        FROM measurements
+        ORDER BY timestamp DESC
+        LIMIT 1
+        `,
+        {
+            type: QueryTypes.SELECT,
+        }
+    );
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    return toMeasurement(rows[0]);
+};
+
+export const getMeasurementStats = async (
+    fromDate: Date,
+    toDate: Date
+): Promise<{
+    pressure: { min: number; max: number; avg: number };
+    flow_rate: { min: number; max: number; avg: number };
+    tank_level: { min: number; max: number; avg: number };
+} | null> => {
+    const result = await sequelize.query<{
+        pressure_min: number;
+        pressure_max: number;
+        pressure_avg: number;
+        flow_rate_min: number;
+        flow_rate_max: number;
+        flow_rate_avg: number;
+        tank_level_min: number;
+        tank_level_max: number;
+        tank_level_avg: number;
+    }>(
+        `
+        SELECT
+            MIN(pressure) as pressure_min,
+            MAX(pressure) as pressure_max,
+            AVG(pressure) as pressure_avg,
+            MIN(flow_rate) as flow_rate_min,
+            MAX(flow_rate) as flow_rate_max,
+            AVG(flow_rate) as flow_rate_avg,
+            MIN(tank_level) as tank_level_min,
+            MAX(tank_level) as tank_level_max,
+            AVG(tank_level) as tank_level_avg
+        FROM measurements
+        WHERE timestamp BETWEEN :from AND :to
+        `,
+        {
+            replacements: {
+                from: fromDate.toISOString(),
+                to: toDate.toISOString(),
+            },
+            type: QueryTypes.SELECT,
+        }
+    );
+
+    if (!result[0]) {
+        return null;
+    }
+
+    const row = result[0];
+    return {
+        pressure: {
+            min: Number(row.pressure_min),
+            max: Number(row.pressure_max),
+            avg: Number(row.pressure_avg),
+        },
+        flow_rate: {
+            min: Number(row.flow_rate_min),
+            max: Number(row.flow_rate_max),
+            avg: Number(row.flow_rate_avg),
+        },
+        tank_level: {
+            min: Number(row.tank_level_min),
+            max: Number(row.tank_level_max),
+            avg: Number(row.tank_level_avg),
+        },
+    };
+};
+
+export const deleteMeasurementsBefore = async (beforeDate: Date): Promise<number> => {
+    const result = await sequelize.query(
+        `
+        DELETE FROM measurements
+        WHERE timestamp < :beforeDate
+        `,
+        {
+            replacements: {
+                beforeDate: beforeDate.toISOString(),
+            },
+        }
+    );
+
+    return Array.isArray(result) ? (Number(result[0]) ?? 0) : 0;
+};
