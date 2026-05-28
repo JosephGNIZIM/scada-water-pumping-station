@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            backend/node_modules
+            frontend/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install backend and frontend dependencies
+        run: npm run install:all
+
+      - name: Build backend and frontend
+        run: npm run build
+
+      - name: Run backend tests if defined
+        shell: pwsh
+        run: |
+          $hasTest = $false
+          try {
+            $script = npm --prefix backend pkg get scripts.test
+            if ($script -and $script -ne 'null') {
+              $hasTest = $true
+            }
+          } catch {
+            $hasTest = $false
+          }
+          if ($hasTest) {
+            Write-Host 'Backend test script found. Running tests...'
+            npm --prefix backend test
+          } else {
+            Write-Host 'No backend test script defined; skipping tests.'
+          }
+
+      - name: Verify frontend build output
+        shell: pwsh
+        run: |
+          if (Test-Path frontend/dist) {
+            Write-Host 'frontend/dist directory exists.'
+          } else {
+            Write-Error 'frontend/dist directory was not generated.'
+            exit 1
+          }
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install frontend dependencies only
+        run: npm --prefix frontend install
+
+      - name: Check if ESLint is installed in frontend
+        id: eslint-check
+        run: |
+          if npm --prefix frontend ls eslint --depth=0 >/dev/null 2>&1; then
+            echo "has_eslint=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_eslint=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run ESLint
+        if: steps.eslint-check.outputs.has_eslint == 'true'
+        run: npm --prefix frontend exec eslint .

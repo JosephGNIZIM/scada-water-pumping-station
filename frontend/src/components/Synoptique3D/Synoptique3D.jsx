@@ -1,5 +1,5 @@
 import React from 'react';
-import SceneAEP from './scene/SceneAEP';
+import SceneAEP from './scene/SceneAEP.jsx';
 import HUD from './controls/HUD';
 import useSceneData from './hooks/useSceneData';
 

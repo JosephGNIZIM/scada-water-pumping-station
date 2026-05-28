@@ -1,7 +1,7 @@
 # SCADA Water Pumping Station
 
 ## Overview
-The SCADA Water Pumping Station project is an open-source web application designed to monitor and control water pumping stations. It provides real-time data visualization, pump control, and alarm management through a user-friendly interface.
+The SCADA Water Pumping Station project is an open-source desktop Electron application designed to monitor and control water pumping stations. It embeds a backend Node.js API and a frontend Vite/React UI, so it is not just a simple webapp.
 
 ## Features
 - Real-time monitoring of pump status and sensor readings
@@ -9,6 +9,12 @@ The SCADA Water Pumping Station project is an open-source web application design
 - Alarm management system for alerts and notifications
 - User-friendly dashboard for easy navigation
 - Responsive design for accessibility on various devices
+
+## Prérequis
+- Node.js v22 ou supérieur (requis par Electron 37)
+- npm v9+
+- OS supportés : Windows 10/11 x64 (app desktop Electron), Linux (backend uniquement)
+- Git
 
 ## Project Structure
 ```
@@ -30,6 +36,12 @@ scada-water-pumping-station
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
+├── electron
+│   ├── main.js
+│   ├── local-server.js
+│   ├── splash.html
+│   ├── buildResources
+│   └── Electron main process & configuration
 ├── docs
 │   ├── architecture.md
 │   ├── installation.md
@@ -44,9 +56,13 @@ scada-water-pumping-station
 ```
 
 ## Installation
+0. Vérifier que Node.js 22+ est installé :
+   ```
+   node --version
+   ```
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/scada-water-pumping-station.git
+   git clone https://github.com/JosephGNIZIM/scada-water-pumping-station.git
    ```
 2. Navigate to the backend directory and install dependencies:
    ```
@@ -68,6 +84,10 @@ scada-water-pumping-station
    ```
    cd ../frontend
    npm run dev
+   ```
+7. Start the Electron desktop app:
+   ```
+   npm run electron:start
    ```
 
 ## Usage
