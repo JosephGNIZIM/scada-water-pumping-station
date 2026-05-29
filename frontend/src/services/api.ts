@@ -62,6 +62,20 @@ export interface PumpStatusResponse {
     lastUpdated: string;
 }
 
+export interface MeasurementPoint {
+    pressure: number;
+    flow_rate: number;
+    tank_level: number;
+    timestamp: string;
+}
+
+export interface MeasurementRangeResponse {
+    data: MeasurementPoint[];
+    count: number;
+    from: string;
+    to: string;
+}
+
 export interface SensorReading {
     id: number;
     type: string;
@@ -296,6 +310,32 @@ export const stopPump = async (pumpId: number) => {
         return response.data;
     } catch (error) {
         console.error('Error stopping pump:', error);
+        throw error;
+    }
+};
+
+export const controlPump = async (pumpId: number, command: 'start' | 'stop') => {
+    try {
+        const response = await api.post<PumpStatusResponse>(`/pumps/${pumpId}/control`, { command });
+        return response.data;
+    } catch (error) {
+        console.error('Error controlling pump:', error);
+        throw error;
+    }
+};
+
+export const getMeasurementRange = async (
+    from: string,
+    to: string,
+    resolution = 200,
+) => {
+    try {
+        const response = await api.get<MeasurementRangeResponse>('/measurements', {
+            params: { from, to, resolution },
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching measurement range:', error);
         throw error;
     }
 };

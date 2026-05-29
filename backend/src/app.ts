@@ -2,17 +2,21 @@ import dotenv from 'dotenv';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Server } from 'http';
+import { WebSocketServer } from 'ws';
 import { initializeDatabase, testConnection } from './utils/db';
 import { initializeSecurityDatabase } from './utils/securityDb';
+import { MeasurementModel } from './models/measurementModel';
 import routes from './routes/index';
 import measurementsRouter from './routes/measurementsRouter';
 import { initializeSimulation } from './services/simulationService';
 import {
     initializeModbusService,
+    ModbusService,
     shutdownModbusService,
     ModbusConfig,
 } from './services/modbusService';
 import {
+    getPollingService,
     initializePollingService,
     shutdownPollingService,
     PollingConfig,
@@ -48,11 +52,15 @@ export const startServer = async (port = Number(process.env.PORT || 3000)): Prom
     }
 
     await initializeDatabase();
+    await MeasurementModel.initialize();
     await initializeSecurityDatabase();
     await initializeSimulation();
 
     // Initialize Modbus service if enabled
-    if (process.env.MODBUS_ENABLED === 'true') {
+    let modbusService: ModbusService | null = null;
+    const modbusEnabled = process.env.MODBUS_ENABLED === 'true';
+
+    if (modbusEnabled) {
         try {
             const modbusConfig: ModbusConfig = {
                 host: process.env.MODBUS_HOST || '192.168.1.100',
@@ -62,7 +70,7 @@ export const startServer = async (port = Number(process.env.PORT || 3000)): Prom
                     Number(process.env.MODBUS_RECONNECT_DELAY_MS || 5000),
             };
 
-            await initializeModbusService(modbusConfig);
+            modbusService = await initializeModbusService(modbusConfig);
             console.log('[App] Modbus service initialized');
         } catch (error) {
             console.error(
@@ -76,10 +84,10 @@ export const startServer = async (port = Number(process.env.PORT || 3000)): Prom
     try {
         const pollingConfig: PollingConfig = {
             intervalMs: Number(process.env.MODBUS_POLL_INTERVAL_MS || 2000),
-            modbusEnabled: process.env.MODBUS_ENABLED === 'true',
+            modbusEnabled,
         };
 
-        const pollingService = initializePollingService(pollingConfig);
+        const pollingService = initializePollingService(pollingConfig, modbusService);
         await pollingService.start();
         console.log('[App] Polling service started');
     } catch (error) {
@@ -103,6 +111,42 @@ export const startServer = async (port = Number(process.env.PORT || 3000)): Prom
     return new Promise((resolve) => {
         activeServer = app.listen(port, () => {
             console.log(`Server is running on port ${port}`);
+
+            const wss = new WebSocketServer({ server: activeServer as Server, path: '/realtime' });
+            const pollingService = getPollingService();
+
+            wss.on('connection', (socket) => {
+                socket.send(JSON.stringify({ type: 'connection', message: 'Realtime telemetry connected' }));
+
+                if (pollingService?.getLastSuccessfulRead()) {
+                    socket.send(JSON.stringify({
+                        type: 'measurement',
+                        data: {
+                            ...pollingService.getLastSuccessfulRead(),
+                            timestamp: new Date().toISOString(),
+                        },
+                    }));
+                }
+            });
+
+            if (pollingService) {
+                pollingService.on('sensor-data', (sensorData) => {
+                    const payload = JSON.stringify({
+                        type: 'measurement',
+                        data: {
+                            ...sensorData,
+                            timestamp: new Date().toISOString(),
+                        },
+                    });
+
+                    wss.clients.forEach((client) => {
+                        if (client.readyState === 1) {
+                            client.send(payload);
+                        }
+                    });
+                });
+            }
+
             resolve(activeServer as Server);
         });
     });

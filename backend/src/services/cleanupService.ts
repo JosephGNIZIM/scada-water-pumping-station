@@ -1,4 +1,4 @@
-import { deleteMeasurementsBefore } from '../utils/db';
+import { MeasurementModel } from '../models/measurementModel';
 
 export interface CleanupConfig {
     retentionDays: number;
@@ -41,7 +41,7 @@ export class CleanupService {
                 cutoffDate.getDate() - this.config.retentionDays
             );
 
-            const deleted = await deleteMeasurementsBefore(cutoffDate);
+            const deleted = await MeasurementModel.deleteBefore(cutoffDate);
 
             if (deleted > 0) {
                 console.log(

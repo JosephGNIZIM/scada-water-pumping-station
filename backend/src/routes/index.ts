@@ -19,6 +19,7 @@ router.use(authenticate);
 // Pump routes
 router.post('/pumps/start', requireCsrf, requireRole(['ingenieur', 'technicien']), pumpController.startPump);
 router.post('/pumps/stop', requireCsrf, requireRole(['ingenieur', 'technicien']), pumpController.stopPump);
+router.post('/pumps/:id/control', requireCsrf, requireRole(['ingenieur', 'technicien']), pumpController.controlPump);
 router.get('/pumps/status', requireRole(['ingenieur', 'technicien', 'operateur']), pumpController.getPumpStatus);
 
 // Sensor routes

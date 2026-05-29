@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
-import {
-    getMeasurementRange,
-    getLatestMeasurement,
-    getMeasurementStats,
-} from '../utils/db';
+import { MeasurementModel } from '../models/measurementModel';
+
+const isValidDate = (date: Date): boolean => !Number.isNaN(date.getTime());
 
 export class MeasurementController {
     async getRange(req: Request, res: Response) {
@@ -20,7 +18,12 @@ export class MeasurementController {
                 ? new Date(fromStr)
                 : new Date(to.getTime() - 60 * 60 * 1000);
 
-            const result = await getMeasurementRange(from, to, resolution);
+            if (!isValidDate(from) || !isValidDate(to)) {
+                res.status(400).json({ message: 'Invalid from or to date.' });
+                return;
+            }
+
+            const result = await MeasurementModel.getRange(from, to, resolution);
 
             res.status(200).json({
                 data: result.data,
@@ -39,7 +42,7 @@ export class MeasurementController {
 
     async getLatest(req: Request, res: Response) {
         try {
-            const measurement = await getLatestMeasurement();
+            const measurement = await MeasurementModel.getLatest();
 
             if (!measurement) {
                 res.status(200).json(null);
@@ -79,7 +82,7 @@ export class MeasurementController {
                     from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
             }
 
-            const stats = await getMeasurementStats(from, now);
+            const stats = await MeasurementModel.getStats(from, now);
 
             if (!stats) {
                 res.status(200).json({

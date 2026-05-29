@@ -1,188 +1,242 @@
-import ModbusRTU from "modbus-serial";
+import ModbusRTU from 'modbus-serial';
 
 export interface SensorData {
-  pressure: number; // bar
-  flow: number; // m³/h
-  tankLevel: number; // %
-  pump1Status: boolean;
-  pump2Status: boolean;
+    pressure: number;
+    flow: number;
+    tankLevel: number;
+    pump1Status: boolean;
+    pump2Status: boolean;
 }
 
 export interface ModbusConfig {
-  host: string;
-  port: number;
-  unitId: number;
-  reconnectDelayMs: number;
+    host: string;
+    port: number;
+    unitId: number;
+    reconnectDelayMs: number;
 }
+
+type ModbusLogLevel = 'info' | 'warn' | 'error';
+
+const logModbus = (
+    level: ModbusLogLevel,
+    event: string,
+    details: Record<string, unknown> = {},
+) => {
+    const payload = {
+        service: 'modbus',
+        event,
+        timestamp: new Date().toISOString(),
+        ...details,
+    };
+
+    if (level === 'error') {
+        console.error('[Modbus]', JSON.stringify(payload));
+        return;
+    }
+
+    if (level === 'warn') {
+        console.warn('[Modbus]', JSON.stringify(payload));
+        return;
+    }
+
+    console.log('[Modbus]', JSON.stringify(payload));
+};
 
 export class ModbusService {
-  private client: ModbusRTU;
-  private config: ModbusConfig;
-  private connected: boolean = false;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private lastError: Error | null = null;
+    private client: ModbusRTU;
+    private config: ModbusConfig;
+    private connected = false;
+    private connecting = false;
+    private reconnectTimeout: NodeJS.Timeout | null = null;
+    private stopped = false;
+    private lastError: Error | null = null;
 
-  constructor(config: ModbusConfig) {
-    this.client = new ModbusRTU();
-    this.config = config;
-  }
-
-  async connect(): Promise<void> {
-    if (this.connected) {
-      return;
+    constructor(config: ModbusConfig) {
+        this.client = new ModbusRTU();
+        this.config = config;
     }
 
-    try {
-      console.log(
-        `[Modbus] Connecting to ${this.config.host}:${this.config.port}...`,
-      );
+    async connect(): Promise<void> {
+        if (this.connected || this.connecting || this.stopped) {
+            return;
+        }
 
-      await this.client.connectTCP(this.config.host, {
-        port: this.config.port,
-      });
+        this.connecting = true;
 
-      this.client.setID(this.config.unitId);
-      this.connected = true;
-      this.lastError = null;
+        try {
+            logModbus('info', 'connect.attempt', {
+                host: this.config.host,
+                port: this.config.port,
+                unitId: this.config.unitId,
+            });
 
-      console.log("[Modbus] ✅ Connected successfully");
-    } catch (error) {
-      this.connected = false;
-      this.lastError =
-        error instanceof Error ? error : new Error(String(error));
-      console.error(`[Modbus] ❌ Connection failed: ${this.lastError.message}`);
+            await this.client.connectTCP(this.config.host, {
+                port: this.config.port,
+            });
 
-      // Schedule reconnect
-      this.scheduleReconnect();
+            this.client.setID(this.config.unitId);
+            this.connected = true;
+            this.lastError = null;
+
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
+
+            logModbus('info', 'connect.success', {
+                host: this.config.host,
+                port: this.config.port,
+                unitId: this.config.unitId,
+            });
+        } catch (error) {
+            this.connected = false;
+            this.lastError = error instanceof Error ? error : new Error(String(error));
+            logModbus('error', 'connect.failure', {
+                message: this.lastError.message,
+                retryInMs: this.config.reconnectDelayMs,
+            });
+            this.scheduleReconnect();
+        } finally {
+            this.connecting = false;
+        }
     }
-  }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
+    private scheduleReconnect(): void {
+        if (this.stopped || this.reconnectTimeout) {
+            return;
+        }
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.reconnectTimeout = null;
+            void this.connect();
+        }, this.config.reconnectDelayMs);
     }
 
-    this.reconnectTimeout = setTimeout(() => {
-      console.log("[Modbus] Attempting to reconnect...");
-      this.connect().catch((error) => {
-        console.error(`[Modbus] Reconnect failed: ${error.message}`);
-      });
-    }, this.config.reconnectDelayMs);
-  }
+    private async ensureConnected(): Promise<boolean> {
+        if (this.connected) {
+            return true;
+        }
 
-  async readSensors(): Promise<SensorData | null> {
-    if (!this.connected) {
-      if (!this.lastError) {
         await this.connect();
-      }
-      return null;
+        return this.connected;
     }
 
-    try {
-      // Read holding registers (0-2)
-      const holdingRegsResult = await this.client.readHoldingRegisters(0, 3);
-      const holdingRegs = holdingRegsResult.data as number[];
-      const pressure = holdingRegs[0] / 10; // Register 0: pressure / 10
-      const flow = holdingRegs[1] / 10; // Register 1: flow / 10
-      const tankLevel = holdingRegs[2] / 10; // Register 2: tank level / 10
+    async readSensors(): Promise<SensorData | null> {
+        const isReady = await this.ensureConnected();
+        if (!isReady) {
+            return null;
+        }
 
-      // Read coils (0-1)
-      const coilsResult = await this.client.readCoils(0, 2);
-      const coils = coilsResult.data as boolean[];
-      const pump1Status = coils[0];
-      const pump2Status = coils[1];
+        try {
+            const holdingRegisters = await this.client.readHoldingRegisters(0, 3);
+            const coils = await this.client.readCoils(0, 2);
 
-      return {
-        pressure,
-        flow,
-        tankLevel,
-        pump1Status,
-        pump2Status,
-      };
-    } catch (error) {
-      this.connected = false;
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Modbus] Read failed: ${errorMsg}`);
-      this.lastError = error instanceof Error ? error : new Error(errorMsg);
-
-      // Attempt reconnect
-      this.scheduleReconnect();
-      return null;
-    }
-  }
-
-  async writePump(pumpId: 1 | 2, state: boolean): Promise<boolean> {
-    if (!this.connected) {
-      console.error("[Modbus] Cannot write pump: not connected");
-      return false;
+            return {
+                pressure: Number(holdingRegisters.data[0]) / 10,
+                flow: Number(holdingRegisters.data[1]) / 10,
+                tankLevel: Number(holdingRegisters.data[2]) / 10,
+                pump1Status: Boolean(coils.data[0]),
+                pump2Status: Boolean(coils.data[1]),
+            };
+        } catch (error) {
+            this.connected = false;
+            this.lastError = error instanceof Error ? error : new Error(String(error));
+            logModbus('error', 'read.failure', {
+                message: this.lastError.message,
+                retryInMs: this.config.reconnectDelayMs,
+            });
+            this.scheduleReconnect();
+            return null;
+        }
     }
 
-    try {
-      const coilAddress = pumpId === 1 ? 0 : 1;
-      console.log(`[Modbus] Writing pump ${pumpId} to ${state ? "ON" : "OFF"}`);
+    async writePump(pumpId: number, state: boolean): Promise<boolean> {
+        if (![1, 2].includes(pumpId)) {
+            logModbus('warn', 'write.invalid_pump', { pumpId, state });
+            return false;
+        }
 
-      await this.client.writeCoil(coilAddress, state);
-      return true;
-    } catch (error) {
-      this.connected = false;
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Modbus] Write pump failed: ${errorMsg}`);
-      this.lastError = error instanceof Error ? error : new Error(errorMsg);
-      this.scheduleReconnect();
-      return false;
-    }
-  }
+        const isReady = await this.ensureConnected();
+        if (!isReady) {
+            logModbus('warn', 'write.skipped_not_connected', { pumpId, state });
+            return false;
+        }
 
-  isConnected(): boolean {
-    return this.connected;
-  }
+        const coilAddress = pumpId - 1;
 
-  getLastError(): Error | null {
-    return this.lastError;
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-
-    if (this.client) {
-      try {
-        this.client.close(() => {
-          console.log("[Modbus] Disconnected");
-        });
-      } catch (error) {
-        console.error(`[Modbus] Error during disconnect: ${error}`);
-      }
+        try {
+            await this.client.writeCoil(coilAddress, state);
+            logModbus('info', 'write.success', {
+                pumpId,
+                coilAddress,
+                state,
+            });
+            return true;
+        } catch (error) {
+            this.connected = false;
+            this.lastError = error instanceof Error ? error : new Error(String(error));
+            logModbus('error', 'write.failure', {
+                pumpId,
+                coilAddress,
+                state,
+                message: this.lastError.message,
+                retryInMs: this.config.reconnectDelayMs,
+            });
+            this.scheduleReconnect();
+            return false;
+        }
     }
 
-    this.connected = false;
-  }
+    isConnected(): boolean {
+        return this.connected;
+    }
+
+    getLastError(): Error | null {
+        return this.lastError;
+    }
+
+    async disconnect(): Promise<void> {
+        this.stopped = true;
+
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+
+        try {
+            this.client.close(() => {
+                logModbus('info', 'disconnect.success');
+            });
+        } catch (error) {
+            logModbus('error', 'disconnect.failure', {
+                message: error instanceof Error ? error.message : String(error),
+            });
+        } finally {
+            this.connected = false;
+            this.connecting = false;
+        }
+    }
 }
 
-// Singleton instance
 let modbusServiceInstance: ModbusService | null = null;
 
 export const initializeModbusService = async (
-  config: ModbusConfig,
+    config: ModbusConfig,
 ): Promise<ModbusService> => {
-  if (modbusServiceInstance) {
+    if (modbusServiceInstance) {
+        return modbusServiceInstance;
+    }
+
+    modbusServiceInstance = new ModbusService(config);
+    await modbusServiceInstance.connect();
     return modbusServiceInstance;
-  }
-
-  modbusServiceInstance = new ModbusService(config);
-  await modbusServiceInstance.connect();
-  return modbusServiceInstance;
 };
 
-export const getModbusService = (): ModbusService | null => {
-  return modbusServiceInstance;
-};
+export const getModbusService = (): ModbusService | null => modbusServiceInstance;
 
 export const shutdownModbusService = async (): Promise<void> => {
-  if (modbusServiceInstance) {
-    await modbusServiceInstance.disconnect();
-    modbusServiceInstance = null;
-  }
+    if (modbusServiceInstance) {
+        await modbusServiceInstance.disconnect();
+        modbusServiceInstance = null;
+    }
 };

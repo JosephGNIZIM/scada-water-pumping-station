@@ -1,18 +1,28 @@
 import EventEmitter from 'events';
+import { MeasurementModel } from '../models/measurementModel';
+import { saveSensorSnapshot } from '../utils/db';
 import { ModbusService, SensorData } from './modbusService';
-import { saveSensorSnapshot, insertMeasurement } from '../utils/db';
 
 export interface PollingConfig {
     intervalMs: number;
     modbusEnabled: boolean;
 }
 
+const logPolling = (event: string, details: Record<string, unknown> = {}) => {
+    console.log('[PollingService]', JSON.stringify({
+        service: 'polling',
+        event,
+        timestamp: new Date().toISOString(),
+        ...details,
+    }));
+};
+
 export class PollingService extends EventEmitter {
     private modbusService: ModbusService | null = null;
     private config: PollingConfig;
     private pollingInterval: NodeJS.Timeout | null = null;
-    private _isRunning: boolean = false;
-    private pollCount: number = 0;
+    private _isRunning = false;
+    private pollCount = 0;
     private lastSuccessfulRead: SensorData | null = null;
 
     constructor(config: PollingConfig) {
@@ -30,14 +40,13 @@ export class PollingService extends EventEmitter {
         }
 
         this._isRunning = true;
-        console.log(
-            `[PollingService] Starting with interval ${this.config.intervalMs}ms`
-        );
+        logPolling('start', {
+            intervalMs: this.config.intervalMs,
+            source: this.config.modbusEnabled ? 'modbus' : 'simulation',
+        });
 
-        // Initial poll immediately
         await this.poll();
 
-        // Schedule recurring polls
         this.pollingInterval = setInterval(async () => {
             await this.poll();
         }, this.config.intervalMs);
@@ -46,71 +55,73 @@ export class PollingService extends EventEmitter {
     }
 
     private async poll(): Promise<void> {
-        this.pollCount++;
+        this.pollCount += 1;
 
         let sensorData: SensorData | null = null;
 
-        if (this.config.modbusEnabled && this.modbusService) {
-            // Read from real Modbus device
+        if (this.config.modbusEnabled) {
+            if (!this.modbusService) {
+                console.warn('[PollingService] Modbus enabled but service is not configured');
+                return;
+            }
+
             sensorData = await this.modbusService.readSensors();
         } else {
-            // Generate simulated data
             sensorData = this.generateSimulatedData();
         }
 
-        if (sensorData) {
-            this.lastSuccessfulRead = sensorData;
-
-            // Store in database - convert SensorData to Sensor[] format
-            try {
-                await saveSensorSnapshot([
-                    { type: 'line-pressure', value: sensorData.pressure },
-                    { type: 'flow-rate', value: sensorData.flow },
-                    { type: 'tank-level', value: sensorData.tankLevel },
-                ]);
-
-                // Also insert into measurements table for historical analysis
-                await insertMeasurement({
-                    pressure: sensorData.pressure,
-                    flow_rate: sensorData.flow,
-                    tank_level: sensorData.tankLevel,
-                    pump1_status: sensorData.pump1Status,
-                    pump2_status: sensorData.pump2Status,
-                });
-            } catch (error) {
-                console.error('[PollingService] Failed to save sensor snapshot:', error);
-            }
-
-            // Emit event for real-time updates
-            this.emit('sensor-data', sensorData);
-
-            if (this.pollCount % 10 === 0) {
-                console.log(
-                    `[PollingService] Poll #${this.pollCount}: P=${sensorData.pressure.toFixed(1)}bar, ` +
-                    `F=${sensorData.flow.toFixed(1)}m³/h, L=${sensorData.tankLevel.toFixed(0)}%`
-                );
-            }
-        } else {
+        if (!sensorData) {
             if (this.config.modbusEnabled) {
                 console.warn('[PollingService] Poll failed - Modbus disconnected');
             }
+            return;
+        }
+
+        this.lastSuccessfulRead = sensorData;
+
+        try {
+            await saveSensorSnapshot([
+                { type: 'line-pressure', value: sensorData.pressure },
+                { type: 'flow-rate', value: sensorData.flow },
+                { type: 'tank-level', value: sensorData.tankLevel },
+            ]);
+
+            await MeasurementModel.insert({
+                pressure: sensorData.pressure,
+                flow_rate: sensorData.flow,
+                tank_level: sensorData.tankLevel,
+                pump1_status: sensorData.pump1Status,
+                pump2_status: sensorData.pump2Status,
+            });
+        } catch (error) {
+            console.error('[PollingService] Failed to persist sensor data:', error);
+        }
+
+        this.emit('sensor-data', sensorData);
+
+        if (this.pollCount % 10 === 0) {
+            logPolling('poll.success', {
+                pollCount: this.pollCount,
+                pressure: Number(sensorData.pressure.toFixed(1)),
+                flow: Number(sensorData.flow.toFixed(1)),
+                tankLevel: Number(sensorData.tankLevel.toFixed(0)),
+                pump1Status: sensorData.pump1Status,
+                pump2Status: sensorData.pump2Status,
+            });
         }
     }
 
     private generateSimulatedData(): SensorData {
         const now = Date.now();
-        const cycle = (now / 10000) % (Math.PI * 2); // 10-second cycle
-
-        // Realistic simulation with sine wave variation
-        const pressure = 2.5 + 2.0 * Math.sin(cycle); // 2.5 - 4.5 bar
-        const flow = 25 + 10 * Math.sin(cycle + Math.PI / 4); // 15 - 35 m³/h
-        const tankLevel =
-            65 + 25 * Math.sin(cycle + Math.PI / 2) + (Math.random() - 0.5) * 5; // 40 - 90%
+        const cycle = (now / 10000) % (Math.PI * 2);
+        const pressure = 3.5 + Math.sin(cycle) * 1.0;
+        const flow = 25 + Math.sin(cycle + Math.PI / 4) * 10;
+        const tankLevel = 65 + Math.sin(cycle + Math.PI / 2) * 25 + (Math.random() - 0.5) * 5;
 
         return {
-            pressure: Math.max(0, pressure),
-            flow: Math.max(0, flow),
-            tankLevel: Math.max(0, Math.min(100, tankLevel)),
+            pressure: Math.max(2.5, Math.min(4.5, pressure)),
+            flow: Math.max(15, Math.min(35, flow)),
+            tankLevel: Math.max(40, Math.min(90, tankLevel)),
             pump1Status: flow > 20,
             pump2Status: flow > 28,
         };
@@ -127,9 +138,7 @@ export class PollingService extends EventEmitter {
         }
 
         this._isRunning = false;
-        console.log(
-            `[PollingService] Stopped after ${this.pollCount} polls`
-        );
+        logPolling('stop', { pollCount: this.pollCount });
         this.emit('stopped');
     }
 
@@ -146,29 +155,25 @@ export class PollingService extends EventEmitter {
     }
 }
 
-// Singleton instance
 let pollingServiceInstance: PollingService | null = null;
 
 export const initializePollingService = (
     config: PollingConfig,
-    modbusService: ModbusService | null = null
+    modbusService: ModbusService | null = null,
 ): PollingService => {
     if (pollingServiceInstance) {
+        if (modbusService) {
+            pollingServiceInstance.setModbusService(modbusService);
+        }
         return pollingServiceInstance;
     }
 
     pollingServiceInstance = new PollingService(config);
-
-    if (modbusService) {
-        pollingServiceInstance.setModbusService(modbusService);
-    }
-
+    pollingServiceInstance.setModbusService(modbusService);
     return pollingServiceInstance;
 };
 
-export const getPollingService = (): PollingService | null => {
-    return pollingServiceInstance;
-};
+export const getPollingService = (): PollingService | null => pollingServiceInstance;
 
 export const shutdownPollingService = async (): Promise<void> => {
     if (pollingServiceInstance) {

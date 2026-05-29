@@ -1,28 +1,54 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import PumpStatus from './PumpStatus';
-import SensorReadings from './SensorReadings';
-import AlarmPanel from './AlarmPanel';
+import React, { useMemo, useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import { useI18n } from '../i18n';
-import { useAppSelector } from '../store/hooks';
-import Gauge from './Gauge';
-import Sparkline from './Sparkline';
-import SynopticView from './SynopticView';
-import LineChartPanel from './LineChartPanel';
-import { buildHealthScore, buildMultiSeries, getAlarmPriority, getSensorLabel, getSensorMax, getSensorUnit, makeSparklineData } from '../utils/scada';
+import GaugeCard from './Dashboard/GaugeCard';
+import PumpStatusCard from './Dashboard/PumpStatusCard';
+import TrendChart from './Dashboard/TrendChart';
+import { useRealtimeData } from '../hooks/useRealtimeData';
 
 const Dashboard: React.FC = () => {
-    const { t, tr, language } = useI18n();
-    const readings = useAppSelector((state) => state.sensor.readings);
-    const alarms = useAppSelector((state) => state.alarm.alarms);
-    const pumpStatus = useAppSelector((state) => state.pump.status);
-    const healthScore = buildHealthScore(readings, alarms);
-    const activeAlarms = alarms.filter((alarm) => !alarm.acknowledged).length;
-    const warningState = activeAlarms > 0 || healthScore < 75 ? 'glow-warning' : 'glow-ok';
-    const pressureReading = readings.find((reading) => reading.type === 'line-pressure')?.value ?? 5.6;
-    const flowValue = readings.find((reading) => reading.type === 'flow-rate')?.value ?? Number((pressureReading * 11.8).toFixed(1));
-    const tankLevelA = readings.find((reading) => reading.type === 'tank1-level')?.value ?? readings.find((reading) => reading.type === 'water-level')?.value ?? 72;
-    const tankLevelB = readings.find((reading) => reading.type === 'tank2-level')?.value ?? (tankLevelA - 8);
+    const { t } = useI18n();
+    const { hasRole } = useAuth();
+    const canControlPumps = hasRole(['ingenieur', 'technicien']);
+    const { latest, isConnected, lastUpdate } = useRealtimeData();
+    const [manualPumpStarts, setManualPumpStarts] = useState<Record<number, string | null>>({});
+
+    const pressure = latest?.pressure ?? 0;
+    const flow = latest?.flow ?? 0;
+    const tankLevel = latest?.tankLevel ?? 0;
+
+    const pumpStatuses = useMemo(() => ([
+        {
+            id: 1,
+            label: 'Pompe 1',
+            isOn: Boolean(latest?.pump1Status),
+            lastStartedAt: latest?.pump1Status
+                ? manualPumpStarts[1] ?? latest.timestamp
+                : null,
+        },
+        {
+            id: 2,
+            label: 'Pompe 2',
+            isOn: Boolean(latest?.pump2Status),
+            lastStartedAt: latest?.pump2Status
+                ? manualPumpStarts[2] ?? latest.timestamp
+                : null,
+        },
+    ]), [latest, manualPumpStarts]);
+
+    const timestampLabel = useMemo(() => {
+        if (!lastUpdate) {
+            return 'Aucune mise a jour';
+        }
+        return `Derniere mise a jour ${lastUpdate.toLocaleTimeString()}`;
+    }, [lastUpdate]);
+
+    const handlePumpCommandComplete = (pumpId: number, wasStart: boolean) => {
+        setManualPumpStarts((current) => ({
+            ...current,
+            [pumpId]: wasStart ? new Date().toISOString() : null,
+        }));
+    };
 
     return (
         <div className="dashboard-shell">
@@ -31,109 +57,62 @@ const Dashboard: React.FC = () => {
                     <p className="eyebrow">{t('dashboard.eyebrow')}</p>
                     <h1>{t('dashboard.title')}</h1>
                     <p className="hero-copy">
-                        {t('dashboard.copy')}
+                        Surveillance temps reel de la pression, du debit, du niveau reservoir et des pompes.
                     </p>
                 </div>
                 <div className="hero-actions">
-                    <Link className="btn btn-primary" to="/dashboard">{t('dashboard.overview')}</Link>
-                    <Link className="btn btn-ghost" to="/settings">{t('dashboard.notes')}</Link>
+                    <span className={`status-pill ${isConnected ? 'status-on' : 'status-off'}`}>
+                        <span className="status-dot" /> {isConnected ? 'Connecte' : 'Deconnecte'}
+                    </span>
+                    <span>{timestampLabel}</span>
                 </div>
             </section>
-            <section className="summary-grid fade-in">
-                <article className={`summary-card ${warningState}`} data-tutorial="system-health">
-                    <p className="eyebrow">{tr('Sante systeme', 'System Health')}</p>
-                    <h3>{healthScore}%</h3>
-                    <p>{tr(`${activeAlarms} alarme(s) active(s), pompe ${pumpStatus}, capteurs en direct.`, `${activeAlarms} active alarm(s), pump ${pumpStatus}, sensors streaming live.`)}</p>
-                </article>
-                <article className="summary-card glow-ok">
-                    <p className="eyebrow">{t('dashboard.operations')}</p>
-                    <h3>{t('dashboard.operationsTitle')}</h3>
-                    <p>{t('dashboard.operationsText')}</p>
-                </article>
-                <article className="summary-card glow-ok">
-                    <p className="eyebrow">{t('dashboard.telemetry')}</p>
-                    <h3>{t('dashboard.telemetryTitle')}</h3>
-                    <p>{t('dashboard.telemetryText')}</p>
-                </article>
-                <article className={`summary-card ${activeAlarms > 0 ? 'glow-alarm' : 'glow-ok'}`}>
-                    <p className="eyebrow">{t('dashboard.alerts')}</p>
-                    <h3>{t('dashboard.alertsTitle')}</h3>
-                    <p>{t('dashboard.alertsText')}</p>
-                </article>
-            </section>
-            <section className="panel glow-ok fade-in" data-tutorial="synoptic-preview">
-                <div className="panel-heading">
-                    <div>
-                        <p className="eyebrow">{tr('Jumeau numerique', 'Digital Twin')}</p>
-                        <h2>{tr('Synoptique anime de l installation', 'Animated Plant Synoptic')}</h2>
-                    </div>
-                    <Link className="btn btn-ghost" to="/synoptic">{tr('Ouvrir le synoptique', 'Open Synoptic')}</Link>
-                </div>
-                <SynopticView
-                    compact
-                    primaryPumpRunning={pumpStatus === 'running'}
-                    secondaryPumpRunning={pumpStatus === 'running'}
-                    valves={[true, true, activeAlarms === 0]}
-                    tankLevelA={tankLevelA}
-                    tankLevelB={tankLevelB}
-                    flowRate={flowValue}
-                    waterState={activeAlarms > 0 ? 'alarm' : healthScore < 75 ? 'warning' : 'ok'}
+
+            <section className="dashboard-grid fade-in" aria-label="Mesures temps reel">
+                <GaugeCard
+                    label="Pression"
+                    unit="bar"
+                    value={pressure}
+                    min={0}
+                    max={10}
+                    warningThreshold={4.5}
+                    dangerThreshold={5.5}
+                />
+                <GaugeCard
+                    label="Debit"
+                    unit="m3/h"
+                    value={flow}
+                    min={0}
+                    max={120}
+                    warningThreshold={30}
+                    dangerThreshold={40}
+                />
+                <GaugeCard
+                    label="Niveau reservoir"
+                    unit="%"
+                    value={tankLevel}
+                    min={0}
+                    max={100}
+                    warningThreshold={80}
+                    dangerThreshold={92}
                 />
             </section>
-            <section className="gauges-grid fade-in">
-                {readings.map((reading) => (
-                    <div key={reading.id} className="metric-stack">
-                        <Gauge
-                            label={getSensorLabel(reading.type, language)}
-                            value={reading.value}
-                            max={getSensorMax(reading.type)}
-                            unit={getSensorUnit(reading.type)}
-                            status={
-                                reading.type === 'pump-temperature' && reading.value > 60
-                                    ? 'alarm'
-                                    : reading.type === 'line-pressure' && reading.value > 7
-                                        ? 'warning'
-                                        : 'ok'
-                            }
-                        />
-                        <section className="panel metric-card">
-                            <div className="panel-heading">
-                                <div>
-                                    <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
-                                    <h2>{getSensorLabel(reading.type, language)}</h2>
-                                </div>
-                                <span className="metric-unit">{getSensorUnit(reading.type)}</span>
-                            </div>
-                            <Sparkline values={makeSparklineData(reading)} />
-                        </section>
-                    </div>
-                ))}
-                <div className="metric-stack">
-                    <Gauge
-                        label={tr('Debit', 'Flow')}
-                        value={flowValue}
-                        max={120}
-                        unit="m3/h"
-                        status={flowValue > 95 ? 'warning' : 'ok'}
+
+            <section className="pump-status-grid fade-in" aria-label="Statuts pompes">
+                {pumpStatuses.map((pump) => (
+                    <PumpStatusCard
+                        key={pump.id}
+                        id={pump.id}
+                        label={pump.label}
+                        isOn={pump.isOn}
+                        lastStartedAt={pump.lastStartedAt}
+                        canControl={canControlPumps}
+                        onCommandComplete={() => handlePumpCommandComplete(pump.id, !pump.isOn)}
                     />
-                    <section className="panel metric-card">
-                        <div className="panel-heading">
-                            <div>
-                                <p className="eyebrow">{tr('Tendance', 'Trend')}</p>
-                                <h2>{tr('Debit', 'Flow')}</h2>
-                            </div>
-                            <span className="metric-unit">m3/h</span>
-                        </div>
-                        <Sparkline values={Array.from({ length: 10 }, (_, index) => Number((flowValue - 4 + index * 0.9 + Math.sin(index) * 1.2).toFixed(1)))} />
-                    </section>
-                </div>
+                ))}
             </section>
-            <LineChartPanel series={buildMultiSeries(readings, language)} title={tr('Tendances du procede', 'Process trends')} />
-            <section className="dashboard-grid fade-in">
-                <PumpStatus />
-                <SensorReadings />
-                <AlarmPanel />
-            </section>
+
+            <TrendChart />
         </div>
     );
 };
