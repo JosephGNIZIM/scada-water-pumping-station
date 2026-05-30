@@ -4,7 +4,7 @@
 
 ### 🎬 Composant principal
 - [x] `Synoptique3D.jsx` - Composant React, gestion canvas + HUD
-- [x] `SceneAEP.js` - Classe Three.js, boucle animate, tous modules
+- [x] `SceneAEP.jsx` - Classe Three.js, boucle animate, tous modules
 - [x] `README.md` - Documentation complète
 - [x] `INTEGRATION_EXAMPLE.jsx` - 4 exemples d'intégration
 - [x] `useMqttSync.js` - Hooks MQTT synchronisation
@@ -327,10 +327,11 @@
 
 - `README.md` - Documentation complète
 - `INTEGRATION_EXAMPLE.jsx` - 4 exemples d'usage
-- `SceneAEP.js` - Architecture principale Three.js
+- `SceneAEP.jsx` - Architecture principale Three.js
 - `useSceneData.js` - Mapping données
 - `useMqttSync.js` - Synchronisation MQTT
 
 ---
 
 **Dernière mise à jour:** Mai 2026 | **Status:** ✅ **100% IMPLÉMENTÉ**
+

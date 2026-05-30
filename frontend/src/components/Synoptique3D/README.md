@@ -326,7 +326,7 @@ npm install three@0.128.0
 src/components/Synoptique3D/
 ├── Synoptique3D.jsx           # Composant React principal
 ├── scene/
-│   ├── SceneAEP.js           # Classe Three.js (boucle animate)
+│   ├── SceneAEP.jsx           # Classe Three.js (boucle animate)
 │   ├── Terrain.js
 │   ├── Forage.js
 │   ├── Tuyauterie.js
@@ -428,3 +428,4 @@ Cible : **60 FPS** sur desktop moderne
 ---
 
 **Version** : 1.0.0 | **Date** : Mai 2026 | **Auteur** : SCADA Team Togo
+
