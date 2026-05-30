@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Server } from 'http';
-import { WebSocketServer } from 'ws';
+import { Server as WebSocketServer } from 'ws';
 import { initializeDatabase, testConnection } from './utils/db';
 import { initializeSecurityDatabase } from './utils/securityDb';
 import { MeasurementModel } from './models/measurementModel';
